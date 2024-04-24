@@ -1,154 +1,94 @@
 #include <iostream>
 #include <complex>
-#include <stdexcept>
+#include <cmath>
 
-using namespace std;
 
-using Complex = complex<double>;
+// Define a complex number type for simplicity
+using Complex = std::complex<double>;
 
 class Node {
 private:
-    Complex* data;   // Dynamic array to hold tensor data
-    int* edges;      // Dynamic array to hold edges information
-    size_t numEdges; // Number of edges
-    size_t dataSize; // Size of the data array
+    Complex** tensor;
+    int rows, cols;  // Dimensions of the tensor (matrix)
 
 public:
     // Constructor
-    Node(size_t numEdges, size_t dataSize) : numEdges(numEdges), dataSize(dataSize) {
-        data = new Complex[dataSize];
-        edges = new int[numEdges];
-        for (size_t i = 0; i < dataSize; i++) {
-            data[i] = 0;  // Initialize data elements to zero
+    Node(int rows, int cols) : rows(rows), cols(cols) {
+        tensor = new Complex*[rows];
+        for (int i = 0; i < rows; ++i) {
+            tensor[i] = new Complex[cols];
         }
     }
 
     // Destructor
     ~Node() {
-        delete[] data;
-        delete[] edges;
+        for (int i = 0; i < rows; ++i) {
+            delete[] tensor[i];
+        }
+        delete[] tensor;
     }
 
-    // Copy constructor for deep copy
-    Node(const Node& other) : numEdges(other.numEdges), dataSize(other.dataSize) {
-        data = new Complex[dataSize];
-        edges = new int[numEdges];
-        for (size_t i = 0; i < dataSize; i++) {
-            data[i] = other.data[i];
-        }
-        for (size_t i = 0; i < numEdges; i++) {
-            edges[i] = other.edges[i];
-        }
-    }
-
-    // Assignment operator for deep copy
-    Node& operator=(const Node& other) {
-        if (this != &other) {
-            delete[] data;
-            delete[] edges;
-            dataSize = other.dataSize;
-            numEdges = other.numEdges;
-            data = new Complex[dataSize];
-            edges = new int[numEdges];
-            for (size_t i = 0; i < dataSize; i++) {
-                data[i] = other.data[i];
-            }
-            for (size_t i = 0; i < numEdges; i++) {
-                edges[i] = other.edges[i];
+    // Set tensor data from an array of complex numbers
+    void setTensorData(const Complex* data) {
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                tensor[i][j] = data[i * cols + j];
             }
         }
-        return *this;
     }
 
-    // Set edges information
-    void setEdges(const int* newEdges) {
-        for (size_t i = 0; i < numEdges; i++) {
-            edges[i] = newEdges[i];
-        }
-    }
-
-    // Access and modify tensor data
-    Complex& operator[](size_t index) {
-        return data[index];
-    }
-
-    // Print the tensor data
-    void print() {
-        for (size_t i = 0; i < dataSize; i++) {
-            cout << data[i] << " ";
-        }
-        cout << endl;
-    }
-
-    // Contract this node with another node
-    static Node contract(const Node& a, const Node& b, int aIndex, int bIndex) {
-        if (a.edges[aIndex] != b.edges[bIndex]) {
-            throw runtime_error("Incompatible edges for contraction.");
-        }
-
-        // Calculate new data size and edges configuration
-        size_t newNumEdges = a.numEdges + b.numEdges - 2;
-        int* newEdges = new int[newNumEdges];
-        size_t dataIndex = 0;
-        for (size_t i = 0; i < a.numEdges; i++) {
-            if (i != aIndex) {
-                newEdges[dataIndex++] = a.edges[i];
+    // Print tensor details
+    void printDetails() const {
+        std::cout << "Tensor (" << rows << "x" << cols << "):\n";
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                std::cout << tensor[i][j] << " ";
             }
+            std::cout << "\n";
         }
-        for (size_t i = 0; i < b.numEdges; i++) {
-            if (i != bIndex) {
-                newEdges[dataIndex++] = b.edges[i];
-            }
+        std::cout << std::endl;
+    }
+
+    // Contract this node with another node (matrix multiplication for 2D tensors)
+    Node contract(const Node& other) {
+        if (cols != other.rows) {
+            throw std::invalid_argument("Matrix dimensions must match for multiplication!");
         }
-
-        // Determine the size of the new data array
-        size_t newDataSize = 1;
-        for (size_t i = 0; i < newNumEdges; i++) {
-            newDataSize *= newEdges[i];
-        }
-
-        Node result(newNumEdges, newDataSize);
-        result.setEdges(newEdges);
-        delete[] newEdges;
-
-        // Perform contraction (simple case for demonstration)
-        for (size_t i = 0; i < a.dataSize; i++) {
-            for (size_t j = 0; j < b.dataSize; j++) {
-                if ((i % a.edges[aIndex]) == (j % b.edges[bIndex])) {
-                    result.data[(i / a.edges[aIndex]) * (b.dataSize / b.edges[bIndex]) + (j / b.edges[bIndex])] +=
-                        a.data[i] * b.data[j];
+        Node result(rows, other.cols);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < other.cols; ++j) {
+                for (int k = 0; k < cols; ++k) {
+                    result.tensor[i][j] += tensor[i][k] * other.tensor[k][j];
                 }
             }
         }
-
         return result;
     }
 };
 
 int main() {
-    // Create two nodes
-    Node a(2, 4), b(2, 4);
 
-    // print the 2 nodes
-    a.print();
-    b.print();
+    double normFactor = std::sqrt(2);
+    Complex dataA[] = {Complex(1.0, 0.0), Complex(0.0, 0.0)};
+    Complex dataB[] = {Complex(1.0 / normFactor, 0.0), Complex(1.0 / normFactor, 0.0),
+                        Complex(1.0 / normFactor, 0.0), Complex(-1.0 / normFactor, 0.0)};
 
-    int aEdges[2] = {1, 0}, bEdges[2] = {1, 0};
-    a.setEdges(aEdges);
-    b.setEdges(bEdges);
+    Node nodeA(1, 2);
+    Node nodeB(2, 2);
+    nodeA.setTensorData(dataA);
+    nodeB.setTensorData(dataB);
 
-    // Initialize some data
-    a[0] = 1; a[1] = 0; a[2] = 0; a[3] = -1;
-    b[0] = 1; b[1] = 0; b[2] = 0; b[3] = 1;
+    std::cout << "Node A details:" << std::endl;
+    nodeA.printDetails();
+    std::cout << "Node B details:" << std::endl;
+    nodeB.printDetails();
 
-    a.print();
-    b.print();
+    Node contractedNode = nodeA.contract(nodeB);
+    std::cout << "Contracted Node (A * B):" << std::endl;
+    contractedNode.printDetails();
 
-    // Contract nodes on the second index of each
-    Node c = Node::contract(a, b, 1, 1);
-
-    cout << "Result of contraction: " << endl;
-    c.print();
-
+    Node contractedNode2 = contractedNode.contract(nodeB);
+    std::cout << "Contracted Node (C * B):" << std::endl;
+    contractedNode2.printDetails();
     return 0;
 }
