@@ -1,6 +1,6 @@
 #include <iostream>
 #include <complex>
-
+#include "utils.h"
 typedef std::complex<double> Complex;
 
 // Function to dynamically allocate a 2D array for a matrix of complex numbers
@@ -49,30 +49,28 @@ void printMatrix(Complex** matrix, int rows, int cols) {
     }
 }
 
-int main() {
-    // Example matrices
-    int aRows = 2, aCols = 2;
-    int bRows = 2, bCols = 2;
-    Complex** A = createMatrix(aRows, aCols);
-    Complex** B = createMatrix(bRows, bCols);
+// int main() {
+//     // Example matrices
+//     int aRows = 1, aCols = 2;
+//     int bRows = 1, bCols = 2;
+//     Complex** A = createMatrix(aRows, aCols);
+//     Complex** B = createMatrix(bRows, bCols);
 
-    // Initialize matrices A and B
-    A[0][0] = Complex(1, 0); A[0][1] = Complex(2, 0);
-    A[1][0] = Complex(3, 0); A[1][1] = Complex(4, 0);
-    B[0][0] = Complex(0, 1); B[0][1] = Complex(0, 2);
-    B[1][0] = Complex(0, 3); B[1][1] = Complex(0, 4);
+//     // Initialize matrices A and B
+//     A[0][0] = Complex(1, 0); A[0][1] = Complex(0, 0);
+//     B[0][0] = Complex(1, 0); B[0][1] = Complex(0, 0);
 
-    // Calculate Kronecker Product
-    Complex** result = kroneckerProduct(A, aRows, aCols, B, bRows, bCols);
+//     // Calculate Kronecker Product
+//     Complex** result = kroneckerProduct(A, aRows, aCols, B, bRows, bCols);
 
-    // Print the result
-    std::cout << "Kronecker Product of A and B:" << std::endl;
-    printMatrix(result, aRows * bRows, aCols * bCols);
+//     // Print the result
+//     std::cout << "Kronecker Product of A and B:" << std::endl;
+//     printMatrix(result, aRows * bRows, aCols * bCols);
 
-    // Clean up memory
-    deleteMatrix(A, aRows);
-    deleteMatrix(B, bRows);
-    deleteMatrix(result, aRows * bRows);
+//     // Clean up memory
+//     deleteMatrix(A, aRows);
+//     deleteMatrix(B, bRows);
+//     deleteMatrix(result, aRows * bRows);
 
-    return 0;
-}
+//     return 0;
+// }
