@@ -13,7 +13,7 @@ private:
 public:
     Node(int rows, int cols);
     ~Node();
-    void setTensorData(const Complex* data);
+    void setTensorData(Complex** data);
     void printDetails() const;
     Node contract(const Node& other);
 };

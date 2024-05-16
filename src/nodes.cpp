@@ -5,7 +5,11 @@
 
 
 // Define a complex number type for simplicity
-using Complex = std::complex<double>;
+// using Complex = std::complex<double>;
+
+typedef std::complex<double> Complex;
+
+
 Node::Node(int rows, int cols) : rows(rows), cols(cols) {
     tensor = new Complex*[rows];
     for (int i = 0; i < rows; ++i) {
@@ -20,10 +24,10 @@ Node::~Node() {
     delete[] tensor;
 }
 
-void Node::setTensorData(const Complex* data) {
+void Node::setTensorData(Complex** data) {
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
-            tensor[i][j] = data[i * cols + j];
+            tensor[i][j] = data[i][j];
         }
     }
 }

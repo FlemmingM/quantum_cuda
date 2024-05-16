@@ -4,13 +4,36 @@
 typedef std::complex<double> Complex;
 
 // Function to dynamically allocate a 2D array for a matrix of complex numbers
-Complex** createMatrix(int rows, int cols) {
+Complex** createEmptyMatrix(int rows, int cols) {
     Complex** matrix = new Complex*[rows];
     for (int i = 0; i < rows; ++i) {
         matrix[i] = new Complex[cols];
     }
     return matrix;
 }
+
+Complex** createMatrix(int numRows, int numCols, const Complex* initialValues) {
+    if (numRows <= 0 || numCols <= 0) {
+        std::cerr << "Invalid matrix dimensions." << std::endl;
+        return nullptr;
+    }
+
+    // Allocate memory for row pointers
+    Complex** matrix = new Complex*[numRows];
+
+    // Allocate memory for each row and initialize with provided values
+    for (int i = 0; i < numRows; ++i) {
+        matrix[i] = new Complex[numCols];
+        for (int j = 0; j < numCols; ++j) {
+            // Compute the index in the initialValues array
+            int index = i * numCols + j;
+            matrix[i][j] = initialValues[index];
+        }
+    }
+
+    return matrix;
+}
+
 
 // Function to delete a dynamically allocated 2D matrix
 void deleteMatrix(Complex** matrix, int rows) {
@@ -24,7 +47,7 @@ void deleteMatrix(Complex** matrix, int rows) {
 Complex** kroneckerProduct(Complex** A, int aRows, int aCols, Complex** B, int bRows, int bCols) {
     int resultRows = aRows * bRows;
     int resultCols = aCols * bCols;
-    Complex** result = createMatrix(resultRows, resultCols);
+    Complex** result = createEmptyMatrix(resultRows, resultCols);
 
     for (int i = 0; i < aRows; ++i) {
         for (int j = 0; j < aCols; ++j) {

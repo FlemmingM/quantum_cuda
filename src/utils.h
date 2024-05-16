@@ -9,6 +9,6 @@ using Complex = std::complex<double>;
 Complex** createMatrix(int rows, int cols, const Complex* initialValues);
 void deleteMatrix(Complex** matrix, int rows);
 Complex** kroneckerProduct(Complex** A, int aRows, int aCols, Complex** B, int bRows, int bCols);
-
+void printMatrix(Complex** matrix, int rows, int cols);
 
 #endif // UTILS_H
