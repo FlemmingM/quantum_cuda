@@ -1,22 +1,33 @@
 #include <iostream>
 #include <random>
 #include <complex>
+#include <cmath> // For std::abs
 
 typedef std::complex<double> Complex;
 
 // Function to perform weighted random selection and calculate average selection frequency per position
-double* weightedRandomAverage(const double* weights, int numElements, int numSamples) {
+double* simulate(const Complex* weights, int numElements, int numSamples) {
     if (numElements <= 0 || numSamples <= 0) {
         std::cerr << "Invalid input parameters." << std::endl;
         return nullptr;
     }
 
-    int* counts = new int[numElements]();  // Array to count occurrences of each index, initialized to zero
-    double* averages = new double[numElements](); // Array to store the average frequencies
+    // Array to count occurrences of each index
+    int* counts = new int[numElements]();
+    // Array to store the average frequencies
+    double* averages = new double[numElements]();
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::discrete_distribution<> dist(weights, weights + numElements);
+
+    // Prepare weights for the distribution by extracting their magnitudes
+    double* magnitudes = new double[numElements];
+    for (int i = 0; i < numElements; ++i) {
+        magnitudes[i] = std::abs(weights[i]);
+    }
+
+    // Create a weighted distribution based on magnitudes of the complex weights
+    std::discrete_distribution<> dist(magnitudes, magnitudes + numElements);
 
     for (int i = 0; i < numSamples; ++i) {
         int index = dist(gen);  // Generate a weighted index
@@ -27,18 +38,19 @@ double* weightedRandomAverage(const double* weights, int numElements, int numSam
         averages[i] = static_cast<double>(counts[i]) / numSamples;  // Calculate the average frequency of selection
     }
 
-    delete[] counts;  // Clean up the counts array
+    delete[] counts;          // Clean up the counts array
+    delete[] magnitudes;      // Clean up the magnitudes array
     return averages;
 }
 
 int main() {
-    // Example weights
+    // Example complex weights
+    Complex weights[] = {Complex(0.8, 0.0), Complex(0.2, 0.0)};
     int numElements = 2;
-    double weights[] = {0.2, 0.8};
     int numSamples = 10000;  // Number of samples
 
     // Calculate average frequency per position
-    double* averages = weightedRandomAverage(weights, numElements, numSamples);
+    double* averages = simulate(weights, numElements, numSamples);
 
     // Output the results
     if (averages) {

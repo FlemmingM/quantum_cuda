@@ -1,7 +1,58 @@
 #include <iostream>
 #include <complex>
+#include <random>
+#include <cmath>
 #include "utils.h"
 typedef std::complex<double> Complex;
+
+Complex* flattenMatrix(Complex** matrix, int rows, int cols) {
+    Complex* flatMatrix = new Complex[rows * cols];
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            flatMatrix[i * cols + j] = matrix[i][j];
+        }
+    }
+    return flatMatrix;
+}
+
+
+double* simulate(const Complex* weights, int numElements, int numSamples) {
+    if (numElements <= 0 || numSamples <= 0) {
+        std::cerr << "Invalid input parameters." << std::endl;
+        return nullptr;
+    }
+
+    // Array to count occurrences of each index
+    int* counts = new int[numElements]();
+    // Array to store the average frequencies
+    double* averages = new double[numElements]();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    // Prepare weights for the distribution by extracting their magnitudes
+    double* magnitudes = new double[numElements];
+    for (int i = 0; i < numElements; ++i) {
+        magnitudes[i] = std::abs(weights[i]);
+    }
+
+    // Create a weighted distribution based on magnitudes of the complex weights
+    std::discrete_distribution<> dist(magnitudes, magnitudes + numElements);
+
+    for (int i = 0; i < numSamples; ++i) {
+        int index = dist(gen);  // Generate a weighted index
+        counts[index]++;        // Increment the count for this index
+    }
+
+    for (int i = 0; i < numElements; ++i) {
+        averages[i] = static_cast<double>(counts[i]) / numSamples;  // Calculate the average frequency of selection
+    }
+
+    delete[] counts;          // Clean up the counts array
+    delete[] magnitudes;      // Clean up the magnitudes array
+    return averages;
+}
+
 
 // Function to dynamically allocate a 2D array for a matrix of complex numbers
 Complex** createEmptyMatrix(int rows, int cols) {

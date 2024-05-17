@@ -44,6 +44,18 @@ int main() {
     std::cout << "Contracted Node (B * A):" << std::endl;
     contractedNode.printDetails();
 
+    int numElements = 4;
+    Complex* result = flattenMatrix(contractedNode.tensor, numElements, 1);
+    double* averages = simulate(result, numElements, 10000);
+
+    std::cout << "Average frequency per position:" << std::endl;
+        for (int i = 0; i < numElements; ++i) {
+            std::cout << "Position " << i << ": " << averages[i] << std::endl;
+        }
+
+        delete[] averages;  // Don't forget to free the allocated memory
+
+
     // Node contractedNode2 = contractedNode.contract(nodeB);
     // std::cout << "Contracted Node (C * B):" << std::endl;
     // contractedNode2.printDetails();

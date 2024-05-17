@@ -7,10 +7,10 @@ using Complex = std::complex<double>;
 
 class Node {
 private:
-    Complex** tensor;
     int rows, cols;
 
 public:
+    Complex** tensor;
     Node(int rows, int cols);
     ~Node();
     void setTensorData(Complex** data);
