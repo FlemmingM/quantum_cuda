@@ -5,6 +5,10 @@
 #include "utils.h"
 typedef std::complex<double> Complex;
 
+
+
+
+
 Complex* flattenMatrix(Complex** matrix, int rows, int cols) {
     Complex* flatMatrix = new Complex[rows * cols];
     for (int i = 0; i < rows; ++i) {
@@ -84,6 +88,14 @@ Complex** createMatrix(int numRows, int numCols, const Complex* initialValues) {
 
     return matrix;
 }
+
+
+// Function to create a tensor of qubits
+// Complex** createQState(qubits* int, numElements int) {
+//     for (int i = 0; i < numElements; i++) {
+
+//     }
+// }
 
 
 // Function to delete a dynamically allocated 2D matrix
