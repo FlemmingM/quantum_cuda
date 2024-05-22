@@ -3,21 +3,101 @@
 #include <random>
 #include <cmath>
 #include "utils.h"
+#include "nodes.h"
 typedef std::complex<double> Complex;
 
 
-
-
-
-Complex* flattenMatrix(Complex** matrix, int rows, int cols) {
-    Complex* flatMatrix = new Complex[rows * cols];
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < cols; ++j) {
-            flatMatrix[i * cols + j] = matrix[i][j];
-        }
+void showRegister(Edge* qRegister, int n) {
+    for (int i=0; i<n; ++i) {
+        qRegister[i].printDetails();
     }
-    return flatMatrix;
+    std::cout << "----------------" << std::endl;
 }
+
+
+void applyPhaseFlip(Edge* qRegister, int n, int state_a, int state_b) {
+    for (int i=0; i<n; ++i) {
+        if (i == state_a) {
+            qRegister[state_a].tensor[state_b][0] *= -1;
+        }
+        // qRegister[i].printDetails();
+    }
+}
+
+void applyDiffusionOperator(Edge* qRegister[], int n) {
+
+}
+
+// Edge* initQubits(int n, float factor) {
+
+//     // init the register
+//     Edge* edges = new Edge[n];
+//     // Initialize each Edge object
+//     for (int i = 0; i < n; ++i) {
+//         edges[i] = Edge(2, 1);
+//     }
+
+//     // Optionally set tensor data for each Edge object
+//     for (int i = 0; i < n; ++i) {
+//         // Complex** data = new Complex*[2];
+//         Complex data[] = {Complex(1.0 * factor, 0.0), Complex(1.0 * factor, 0.0)};
+//         Complex** matrix = createMatrix(2, 1, data);
+//         // for (int j = 0; j < 2; ++j) {
+//         //     data[j] = new Complex[1];
+//         //     for (int k = 0; k < 1; ++k) {
+//         //         data[j][k] = Complex(1.0 * factor, 0.0);
+//         //     }
+//         // }
+//         edges[i].setTensorData(matrix);
+
+//         // // Clean up allocated data to avoid memory leaks
+//         // for (int j = 0; j < 2; ++j) {
+//         //     delete[] data[j];
+//         // }
+//     }
+//     return edges;
+// }
+
+Edge* initQubits(int n, float factor) {
+    // Initialize the register
+    Edge* edges = new Edge[n];
+
+    // Initialize each Edge object
+    for (int i = 0; i < n; ++i) {
+        edges[i] = Edge(2, 1);
+    }
+
+    // Optionally set tensor data for each Edge object
+    for (int i = 0; i < n; ++i) {
+        Complex** data = new Complex*[2];
+        for (int j = 0; j < 2; ++j) {
+            data[j] = new Complex[1];
+            data[j][0] = Complex(1.0 * factor, 0.0); // Example initialization
+        }
+        edges[i].setTensorData(data);
+
+        // edges[i].printDetails();
+
+        // Clean up allocated data to avoid memory leaks
+        // for (int j = 0; j < 2; ++j) {
+        //     delete[] data[j];
+        // }
+        // delete[] data;
+    }
+
+    return edges;
+}
+
+
+// Complex* flattenMatrix(Complex** matrix, int rows, int cols) {
+//     Complex* flatMatrix = new Complex[rows * cols];
+//     for (int i = 0; i < rows; ++i) {
+//         for (int j = 0; j < cols; ++j) {
+//             flatMatrix[i * cols + j] = matrix[i][j];
+//         }
+//     }
+//     return flatMatrix;
+// }
 
 
 double* simulate(const Complex* weights, int numElements, int numSamples) {
