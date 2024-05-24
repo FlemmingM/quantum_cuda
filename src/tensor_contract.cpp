@@ -47,34 +47,65 @@ void contract_tensor(const std::complex<double>* state,
     }
 }
 
+
+void printState(const std::complex<double>* state, int N, std::string message) {
+    std::cout << message << std::endl;
+    for (int i = 0; i < N; ++i) {
+        std::cout << state[i] << " ";
+    }
+    std::cout << std::endl;
+}
+
+
+void applyPhaseFlip(std::complex<double>* state, int idx){
+    state[idx] *= std::complex<double>(-1.0, 0.0);
+}
+
+void applyGateAllQubits(
+    std::complex<double>* state,
+    const std::complex<double> gate[2][2],
+    std::complex<double>* new_state,
+    const int* shape,
+    int n,
+    int N) {
+
+    for (int i = 0; i < n; ++i){
+        contract_tensor(state, gate, i, new_state, shape, n);
+        // Update the state with the new state
+        for (int j = 0; j < N; ++j) {
+            state[j] = new_state[j];
+        }
+    }
+}
+
+void applyGateSingleQubit(
+    std::complex<double>* state,
+    const std::complex<double> gate[2][2],
+    std::complex<double>* new_state,
+    const int* shape,
+    int n,
+    int N,
+    int idx
+    ) {
+
+
+    contract_tensor(state, gate, idx, new_state, shape, n);
+    // Update the state with the new state
+    for (int j = 0; j < N; ++j) {
+        state[j] = new_state[j];
+    }
+}
+
+
 int main() {
     // Define the shape of the state tensor
     // int shape[2] = {2, 2};  // For 2 qubits
     // int n = 2;
 
     int n = 2;
-    int* shape = new int[n]; // Dynamically allocate an array of size n
-
-    // Fill the array with the value 2
-    for (int i = 0; i < n; ++i) {
-        shape[i] = 2;
-    }
-
-
-    // int shape[3] = {2, 2, 2};  // For 2 qubits
-    // int n = 3;
-
     int N = std::pow(2, n);
+    int markedState = 3;
 
-    // Define the initial state tensor for 2 qubits (|00>)
-    // std::complex<double> state[4] = {1, 0, 0, 0};
-
-    std::complex<double>* state = new std::complex<double>[N];
-    state[0] = std::complex<double>(1, 0);
-    for (int i = 1; i < N; ++i) {
-        state[i] = std::complex<double>(0, 0);
-    }
-    // std::complex<double> state[8] = {1, 0, 0, 0, 0, 0, 0, 0};
 
     // Define the gates
     std::complex<double> H[2][2] = {
@@ -97,40 +128,97 @@ int main() {
         {1, 0}
     };
 
+    // Dynamically allocate an array of size n with 2 dimensions each for each qubit
+    int* shape = new int[n];
+    for (int i = 0; i < n; ++i) {
+        shape[i] = 2;
+    }
+
+
+    // Init a superposition of qubits
+    std::complex<double>* state = new std::complex<double>[N];
+    for (int i = 0; i < N; ++i) {
+        state[i] = std::complex<double>(1 / std::sqrt(N), 0);
+    }
+
     // Initialize the new state tensor
     std::complex<double> new_state[N];
 
+    printState(state, N, "Initial state");
+
+    // Apply Oracle
+    applyPhaseFlip(state, markedState);
+    // state[idx] *= std::complex<double>(-1, 0);
+    printState(state, N, "Oracle applied");
+
+    // Apply the diffusion operator ############################################
+    // H gates to all qubits
+
+
+// const std::complex<double>* state,
+//                         const std::complex<double> gate[2][2],
+//                         std::complex<double>* new_state,
+//                         const int* shape,
+//                         int n,
+//                         int N
+    applyGateAllQubits(state, H, new_state, shape, n, N);
+    applyGateAllQubits(state, X, new_state, shape, n, N);
+    applyPhaseFlip(state, N);
+    // applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    // applyGateAllQubits(state, X, new_state, shape, n, N);
+    // applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    // applyGateAllQubits(state, H, new_state, shape, n, N);
+
+    printState(state, N, "After Diffusion");
+
+
+
+    // contract_tensor(state, H, 0, new_state, shape, n);
+    // // Update the state with the new state
+    // for (int i = 0; i < N; ++i) {
+    //     state[i] = new_state[i];
+    // }
+
+
+
+
+
+
+
+    // Initialize the new state tensor
+    // std::complex<double> new_state[N];
+
     // Apply the Hadamard gate to the first qubit
-    contract_tensor(state, H, 0, new_state, shape, n);
+    // contract_tensor(state, H, 0, new_state, shape, n);
 
-    // Print the resulting state tensor
-    std::cout << "Resulting state tensor after applying H to the first qubit:" << std::endl;
-    for (int i = 0; i < N; ++i) {
-        std::cout << new_state[i] << " ";
-    }
-    std::cout << std::endl;
+    // // Print the resulting state tensor
+    // std::cout << "Resulting state tensor after applying H to the first qubit:" << std::endl;
+    // for (int i = 0; i < N; ++i) {
+    //     std::cout << new_state[i] << " ";
+    // }
+    // std::cout << std::endl;
 
-    // Update the state with the new state
-    for (int i = 0; i < N; ++i) {
-        state[i] = new_state[i];
-    }
+    // // Update the state with the new state
+    // for (int i = 0; i < N; ++i) {
+    //     state[i] = new_state[i];
+    // }
 
-    // Apply the Hadamard gate to the second qubit
-    contract_tensor(state, H, 1, new_state, shape, n);
+    // // Apply the Hadamard gate to the second qubit
+    // contract_tensor(state, H, 1, new_state, shape, n);
 
-        // Update the state with the new state
-    for (int i = 0; i < N; ++i) {
-        state[i] = new_state[i];
-    }
+    //     // Update the state with the new state
+    // for (int i = 0; i < N; ++i) {
+    //     state[i] = new_state[i];
+    // }
 
-    // contract_tensor(state, H, 2, new_state, shape, n);
+    // // contract_tensor(state, H, 2, new_state, shape, n);
 
-    // Print the resulting state tensor
-    std::cout << "Resulting state tensor after applying H to the second qubit:" << std::endl;
-    for (int i = 0; i < N; ++i) {
-        std::cout << new_state[i] << " ";
-    }
-    std::cout << std::endl;
+    // // Print the resulting state tensor
+    // std::cout << "Resulting state tensor after applying H to the second qubit:" << std::endl;
+    // for (int i = 0; i < N; ++i) {
+    //     std::cout << new_state[i] << " ";
+    // }
+    // std::cout << std::endl;
 
     return 0;
 }
