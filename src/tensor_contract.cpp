@@ -88,12 +88,31 @@ void applyGateSingleQubit(
     int idx
     ) {
 
-
     contract_tensor(state, gate, idx, new_state, shape, n);
     // Update the state with the new state
     for (int j = 0; j < N; ++j) {
         state[j] = new_state[j];
     }
+}
+
+
+void applyDiffusionOperator(
+    std::complex<double>* state,
+    std::complex<double>* new_state,
+    const int* shape,
+    const std::complex<double> H[2][2],
+    const std::complex<double> X[2][2],
+    const std::complex<double> Z[2][2],
+    int n,
+    int N
+) {
+    applyGateAllQubits(state, H, new_state, shape, n, N);
+    applyGateAllQubits(state, X, new_state, shape, n, N);
+    applyPhaseFlip(state, N-1);
+    applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    applyGateAllQubits(state, X, new_state, shape, n, N);
+    applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    applyGateAllQubits(state, H, new_state, shape, n, N);
 }
 
 
@@ -154,22 +173,17 @@ int main() {
     // Apply the diffusion operator ############################################
     // H gates to all qubits
 
-
-// const std::complex<double>* state,
-//                         const std::complex<double> gate[2][2],
-//                         std::complex<double>* new_state,
-//                         const int* shape,
-//                         int n,
-//                         int N
-    applyGateAllQubits(state, H, new_state, shape, n, N);
-    applyGateAllQubits(state, X, new_state, shape, n, N);
-    applyPhaseFlip(state, N);
+    applyDiffusionOperator(state, new_state, shape, H, X, Z, n, N);
+    // applyGateAllQubits(state, H, new_state, shape, n, N);
+    // applyGateAllQubits(state, X, new_state, shape, n, N);
+    // applyPhaseFlip(state, N-1);
     // applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
     // applyGateAllQubits(state, X, new_state, shape, n, N);
     // applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
     // applyGateAllQubits(state, H, new_state, shape, n, N);
 
     printState(state, N, "After Diffusion");
+
 
 
 
