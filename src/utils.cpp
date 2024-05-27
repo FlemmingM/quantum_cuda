@@ -2,31 +2,168 @@
 #include <complex>
 #include <random>
 #include <cmath>
+#include <fstream>
 #include "utils.h"
 #include "nodes.h"
 typedef std::complex<double> Complex;
 
 
-void showRegister(Edge* qRegister, int n) {
-    for (int i=0; i<n; ++i) {
-        qRegister[i].printDetails();
+void saveArrayToCSV(const double *array, int N, const std::string& filename) {
+    std::ofstream file;
+    file.open(filename);
+
+    if (!file) {
+        std::cerr << "Unable to open file";
+        return;
     }
-    std::cout << "----------------" << std::endl;
+    file << "position";
+    file << ",";
+    file << "probability";
+    file << "\n";
+    for (size_t i = 0; i < N; ++i) {
+        file << "pos";
+        file << i;
+        file << ",";
+        file << array[i];
+        file << "\n";
+    }
+    file.close();
 }
 
 
-void applyPhaseFlip(Edge* qRegister, int n, int state_a, int state_b) {
-    for (int i=0; i<n; ++i) {
-        if (i == state_a) {
-            qRegister[state_a].tensor[state_b][0] *= -1;
+void contract_tensor(const std::complex<double>* state,
+                     const std::complex<double> gate[2][2],
+                     int qubit,
+                     std::complex<double>* new_state,
+                     const int* shape, int n) {
+    int total_elements = std::pow(2, n);
+
+    // Zero out new_state
+    for (int i = 0; i < total_elements; ++i) {
+        new_state[i] = std::complex<double>(0, 0);
+    }
+
+    // Iterate over all possible indices of the state tensor
+    for (int idx = 0; idx < total_elements; ++idx) {
+        int new_idx[n];
+        int old_idx[n];
+        int temp = idx;
+
+        // Compute the multi-dimensional index
+        for (int i = n - 1; i >= 0; --i) {
+            new_idx[i] = temp % shape[i];
+            temp /= shape[i];
         }
-        // qRegister[i].printDetails();
+
+        // Perform the tensor contraction manually for the specified qubit
+        for (int j = 0; j < 2; ++j) {
+            // Copy new_idx to old_idx
+            for (int i = 0; i < n; ++i) {
+                old_idx[i] = new_idx[i];
+            }
+            old_idx[qubit] = j;
+
+            // Compute the linear index for old_idx
+            int old_linear_idx = 0;
+            int factor = 1;
+            for (int i = n - 1; i >= 0; --i) {
+                old_linear_idx += old_idx[i] * factor;
+                factor *= shape[i];
+            }
+
+            new_state[idx] += gate[new_idx[qubit]][j] * state[old_linear_idx];
+        }
     }
 }
 
-void applyDiffusionOperator(Edge* qRegister[], int n) {
 
+void printState(const std::complex<double>* state, int N, std::string message) {
+    std::cout << message << std::endl;
+    for (int i = 0; i < N; ++i) {
+        std::cout << state[i] << " ";
+    }
+    std::cout << std::endl;
 }
+
+
+void applyPhaseFlip(std::complex<double>* state, int idx){
+    state[idx] *= std::complex<double>(-1.0, 0.0);
+}
+
+void applyGateAllQubits(
+    std::complex<double>* state,
+    const std::complex<double> gate[2][2],
+    std::complex<double>* new_state,
+    const int* shape,
+    int n,
+    int N) {
+
+    for (int i = 0; i < n; ++i){
+        contract_tensor(state, gate, i, new_state, shape, n);
+        // Update the state with the new state
+        for (int j = 0; j < N; ++j) {
+            state[j] = new_state[j];
+        }
+    }
+}
+
+void applyGateSingleQubit(
+    std::complex<double>* state,
+    const std::complex<double> gate[2][2],
+    std::complex<double>* new_state,
+    const int* shape,
+    int n,
+    int N,
+    int idx
+    ) {
+
+    contract_tensor(state, gate, idx, new_state, shape, n);
+    // Update the state with the new state
+    for (int j = 0; j < N; ++j) {
+        state[j] = new_state[j];
+    }
+}
+
+
+void applyDiffusionOperator(
+    std::complex<double>* state,
+    std::complex<double>* new_state,
+    const int* shape,
+    const std::complex<double> H[2][2],
+    const std::complex<double> X[2][2],
+    const std::complex<double> Z[2][2],
+    int n,
+    int N
+) {
+    applyGateAllQubits(state, H, new_state, shape, n, N);
+    applyGateAllQubits(state, X, new_state, shape, n, N);
+    applyPhaseFlip(state, N-1);
+    applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    applyGateAllQubits(state, X, new_state, shape, n, N);
+    applyGateSingleQubit(state, Z, new_state, shape, n, N, 0);
+    applyGateAllQubits(state, H, new_state, shape, n, N);
+}
+
+
+
+// void showRegister(Edge* qRegister, int n) {
+//     for (int i=0; i<n; ++i) {
+//         qRegister[i].printDetails();
+//     }
+//     std::cout << "----------------" << std::endl;
+// }
+
+
+// void applyPhaseFlip(Edge* qRegister, int n, int state_a, int state_b) {
+//     for (int i=0; i<n; ++i) {
+//         if (i == state_a) {
+//             qRegister[state_a].tensor[state_b][0] *= -1;
+//         }
+//         // qRegister[i].printDetails();
+//     }
+// }
+
+
 
 // Edge* initQubits(int n, float factor) {
 
@@ -58,35 +195,35 @@ void applyDiffusionOperator(Edge* qRegister[], int n) {
 //     return edges;
 // }
 
-Edge* initQubits(int n, float factor) {
-    // Initialize the register
-    Edge* edges = new Edge[n];
+// Edge* initQubits(int n, float factor) {
+//     // Initialize the register
+//     Edge* edges = new Edge[n];
 
-    // Initialize each Edge object
-    for (int i = 0; i < n; ++i) {
-        edges[i] = Edge(2, 1);
-    }
+//     // Initialize each Edge object
+//     for (int i = 0; i < n; ++i) {
+//         edges[i] = Edge(2, 1);
+//     }
 
-    // Optionally set tensor data for each Edge object
-    for (int i = 0; i < n; ++i) {
-        Complex** data = new Complex*[2];
-        for (int j = 0; j < 2; ++j) {
-            data[j] = new Complex[1];
-            data[j][0] = Complex(1.0 * factor, 0.0); // Example initialization
-        }
-        edges[i].setTensorData(data);
+//     // Optionally set tensor data for each Edge object
+//     for (int i = 0; i < n; ++i) {
+//         Complex** data = new Complex*[2];
+//         for (int j = 0; j < 2; ++j) {
+//             data[j] = new Complex[1];
+//             data[j][0] = Complex(1.0 * factor, 0.0); // Example initialization
+//         }
+//         edges[i].setTensorData(data);
 
-        // edges[i].printDetails();
+//         // edges[i].printDetails();
 
-        // Clean up allocated data to avoid memory leaks
-        // for (int j = 0; j < 2; ++j) {
-        //     delete[] data[j];
-        // }
-        // delete[] data;
-    }
+//         // Clean up allocated data to avoid memory leaks
+//         // for (int j = 0; j < 2; ++j) {
+//         //     delete[] data[j];
+//         // }
+//         // delete[] data;
+//     }
 
-    return edges;
-}
+//     return edges;
+// }
 
 
 // Complex* flattenMatrix(Complex** matrix, int rows, int cols) {
