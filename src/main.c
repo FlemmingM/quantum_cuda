@@ -4,6 +4,8 @@
 #include <complex.h>
 #include <string.h>
 #include "utils.h"
+#include <omp.h>
+
 
 // Define a complex number type for simplicity
 typedef double complex Complex;
@@ -71,6 +73,8 @@ int main(int argc, char* argv[]) {
     if (verbose == 1) {
         printf("Running %d round(s)\n", k);
     }
+
+    double time = omp_get_wtime();
     for (int i = 0; i < k; ++i) {
         if (verbose == 1) {
             printf("%d/%d\n", i, k);
@@ -88,11 +92,15 @@ int main(int argc, char* argv[]) {
     }
 
     double* averages = simulate(state, N, numSamples);
-    printf("Average frequency per position:\n");
-    for (int i = 0; i < N; ++i) {
-        printf("Position %d: %f\n", i, averages[i]);
+    if (verbose == 1) {
+        printf("Average frequency per position:\n");
+        for (int i = 0; i < N; ++i) {
+            printf("Position %d: %f\n", i, averages[i]);
+        }
     }
 
+    double elapsed = omp_get_wtime() - time;
+    printf("Time: %f \n", elapsed);
     // save the data
     saveArrayToCSV(averages, N, fileName);
 

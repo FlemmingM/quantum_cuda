@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 #include <errno.h>
+#include <omp.h>
 
 typedef double complex Complex;
 
@@ -29,11 +30,13 @@ void contract_tensor(const Complex* state,
     int total_elements = (int)pow(2, n);
 
     // Zero out new_state
+    #pragma omp parallel for
     for (int i = 0; i < total_elements; ++i) {
         new_state[i] = 0.0 + 0.0*I;
     }
 
     // Iterate over all possible indices of the state tensor
+    #pragma omp parallel for
     for (int idx = 0; idx < total_elements; ++idx) {
         int new_idx[n];
         int old_idx[n];
@@ -65,6 +68,52 @@ void contract_tensor(const Complex* state,
         }
     }
 }
+
+
+// void contract_tensor(const Complex* state,
+//                      const Complex gate[2][2],
+//                      int qubit,
+//                      Complex* new_state,
+//                      const int* shape, int n) {
+//     int total_elements = (int)pow(2, n);
+
+//     // Zero out new_state
+//     for (int i = 0; i < total_elements; ++i) {
+//         new_state[i] = 0.0 + 0.0*I;
+//     }
+
+//     // Iterate over all possible indices of the state tensor
+//     for (int idx = 0; idx < total_elements; ++idx) {
+//         int new_idx[n];
+//         int old_idx[n];
+//         int temp = idx;
+
+//         // Compute the multi-dimensional index
+//         for (int i = n - 1; i >= 0; --i) {
+//             new_idx[i] = temp % shape[i];
+//             temp /= shape[i];
+//         }
+
+//         // Perform the tensor contraction manually for the specified qubit
+//         for (int j = 0; j < 2; ++j) {
+//             // Copy new_idx to old_idx
+//             for (int i = 0; i < n; ++i) {
+//                 old_idx[i] = new_idx[i];
+//             }
+//             old_idx[qubit] = j;
+
+//             // Compute the linear index for old_idx
+//             int old_linear_idx = 0;
+//             int factor = 1;
+//             for (int i = n - 1; i >= 0; --i) {
+//                 old_linear_idx += old_idx[i] * factor;
+//                 factor *= shape[i];
+//             }
+
+//             new_state[idx] += gate[new_idx[qubit]][j] * state[old_linear_idx];
+//         }
+//     }
+// }
 
 void printState(const Complex* state, int N, const char* message) {
     printf("%s\n", message);
