@@ -14,17 +14,17 @@ int main(int argc, char* argv[]) {
 
     // collect input args
     if (argc < 4) {
-        std::cerr << "Usage: " << argv[0] << " n qubits<int>; marked state<int>; number of samples<int>; verbose 0 or 1<int>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " n qubits<int>; marked state<int>; number of samples<int>; fileName<string>; verbose 0 or 1<int>" << std::endl;
         return 1;
     }
-
 
 
     int n = std::atoi(argv[1]);;
     int N = std::pow(2, n);
     int markedState = std::atoi(argv[2]);
     int numSamples = std::atoi(argv[3]);
-    int verbose = std::atoi(argv[4]);
+    std::string fileName = argv[4];
+    int verbose = std::atoi(argv[5]);
 
     // Assuming we have t = 1 solution in grover's algorithm
     // we have k = floor(pi/4 * sqrt(N))
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
         }
 
     // save the data
-    saveArrayToCSV(averages, N, "test.csv");
+    saveArrayToCSV(averages, N, fileName);
 
     delete[] averages;
 
