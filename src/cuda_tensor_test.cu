@@ -25,14 +25,28 @@ __global__ void zeroOutState(Complex* new_state, int total_elements) {
     }
 }
 
-__global__ void contract_tensor_baseline(const Complex* state, const Complex* gate,
-                                     int qubit, Complex* new_state,
-                                     const int* shape, const int n, int total_elements) {
+__global__ void zeroOutInt(int* array, int total_elements) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx < total_elements) {
+        array[idx] = 0;
+    }
+}
+
+__global__ void contract_tensor_baseline(
+        const Complex* state,
+        const Complex* gate,
+        int qubit,
+        Complex* new_state,
+        const int* shape,
+        const int n,
+        int total_elements
+    ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < total_elements) {
 
-    int new_idx[3];
-    int old_idx[3];
+    int *new_idx = (int *)malloc(n * sizeof(int));
+    int *old_idx = (int *)malloc(n * sizeof(int));
+
     int temp = idx;
 
     // Compute the multi-dimensional index
@@ -56,19 +70,7 @@ __global__ void contract_tensor_baseline(const Complex* state, const Complex* ga
             old_linear_idx += old_idx[i] * factor;
             factor *= shape[i];
         }
-        // printf("show complex %lf\n", cuCreal(gate[new_idx[qubit] * 2 + j]));
-        //return;
-        //Complex val = cuCmul(gate[new_idx[qubit] * 2 + j], state[old_linear_idx]);
-        //Complex val = make_cuDoubleComplex(0.0, 0.0);//cuCmul(gate[0], state[old_linear_idx]);
-        //double val_re = cuCreal(val);
-        //double val_img = cuCimag(val);
-
-
-        //printf("RE: %d \n", val_re);
-        //printf("IMG: %d \n", val_img);
         AddComplex(&new_state[idx], cuCmul(gate[new_idx[qubit] * 2 + j], state[old_linear_idx]));
-
-    // new_state[0] = make_cuDoubleComplex(12.0, 0.0);
         }
     }
 }
@@ -97,6 +99,9 @@ int main() {
     int *shape_h;
     int *shape_d;
 
+    int *new_idx;
+    int *old_idx;
+
     // Malloc on device and host
 
     cudaMallocHost((void **)&state_h, N * sizeof(Complex));
@@ -110,6 +115,10 @@ int main() {
 
     // Malloc the gate on device
     cudaMalloc((void **)&H_d, 4 * sizeof(Complex));
+
+    // Malloc the indices on the device
+    cudaMalloc((void **)&new_idx, n * sizeof(int));
+    cudaMalloc((void **)&old_idx, n * sizeof(int));
 
     // // Init gate values
     // H[0] = make_cuDoubleComplex(1.0 / sqrt(2.0), 0.0);
@@ -150,25 +159,48 @@ int main() {
     //                                  const int* shape, const int n, int total_elements
     zeroOutState<<<dimGrid, dimBlock>>>(new_state_d, N);
     contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 0, new_state_d, shape_d, 3, N);
+    // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 0, new_state_d, shape_d, 3, N, new_idx, old_idx);
+    // zeroOutInt<<<dimGrid, dimBlock>>>(new_idx, n);
+    // zeroOutInt<<<dimGrid, dimBlock>>>(old_idx, n);
     cudaDeviceSynchronize();
-    // contract_tensor_baseline<<<dimGrid, dimBlock>>>(new_state_d, H_d, 1, state_d, shape_d, 3, N);
-    // cudaDeviceSynchronize();
+    zeroOutState<<<dimGrid, dimBlock>>>(state_d, N);
+    contract_tensor_baseline<<<dimGrid, dimBlock>>>(new_state_d, H_d, 1, state_d, shape_d, 3, N);
+    // contract_tensor_baseline<<<dimGrid, dimBlock>>>(new_state_d, H_d, 1, state_d, shape_d, 3, N, new_idx, old_idx);
+    // zeroOutInt<<<dimGrid, dimBlock>>>(new_idx, n);
+    // zeroOutInt<<<dimGrid, dimBlock>>>(old_idx, n);
+    cudaDeviceSynchronize();
+
+
+    zeroOutState<<<dimGrid, dimBlock>>>(new_state_d, N);
+    contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 2, new_state_d, shape_d, 3, N);
+    // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 2, new_state_d, shape_d, 3, N, new_idx, old_idx);
+
+    // zeroOutInt<<<dimGrid, dimBlock>>>(new_idx, n);
+    // zeroOutInt<<<dimGrid, dimBlock>>>(old_idx, n);
+    cudaDeviceSynchronize();
 
     double elapsed_time = omp_get_wtime() - time;
     printf("time: %f\n", elapsed_time);
 
     cudaMemcpy(new_state_h, new_state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
+    cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
     // Print the result for verification
     for (int i = 0; i < N; ++i) {
         printf("new_state[%d] = (%f, %f)\n", i, cuCreal(new_state_h[i]), cuCimag(new_state_h[i]));
     }
 
+    for (int i = 0; i < N; ++i) {
+        printf("state[%d] = (%f, %f)\n", i, cuCreal(state_h[i]), cuCimag(state_h[i]));
+    }
+
     // cudafree
     cudaFree(state_d);
     cudaFree(new_state_d);
     cudaFree(shape_d);
+    cudaFree(H_d);
     cudaFreeHost(state_h);
     cudaFreeHost(new_state_h);
     cudaFreeHost(shape_h);
+    // cudaFreeHost(H_h);
 }

@@ -22,6 +22,16 @@ void saveArrayToCSV(const double *array, int N, const char* filename) {
     fclose(file);
 }
 
+
+__device__ void AddComplex(cuDoubleComplex* a, cuDoubleComplex b){
+  //transform the addresses of real and imag. parts to double pointers
+  double *x = (double*)a;
+  double *y = x+1;
+  //use atomicAdd for double variables
+  atomicAdd(x, cuCreal(b));
+  atomicAdd(y, cuCimag(b));
+}
+
 __global__ void zeroOutState(Complex* new_state, int total_elements) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < total_elements) {
@@ -29,14 +39,21 @@ __global__ void zeroOutState(Complex* new_state, int total_elements) {
     }
 }
 
-__global__ void contract_tensor_baseline(const Complex* state, const Complex* gate,
-                                     int qubit, Complex* new_state,
-                                     const int* shape, int n, int total_elements) {
+__global__ void contract_tensor_baseline(
+        const Complex* state,
+        const Complex* gate,
+        int qubit,
+        Complex* new_state,
+        const int* shape,
+        const int n,
+        int total_elements
+    ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx >= total_elements) return;
+    if (idx < total_elements) {
 
-    int new_idx[n];
-    int old_idx[n];
+    int *new_idx = (int *)malloc(n * sizeof(int));
+    int *old_idx = (int *)malloc(n * sizeof(int));
+
     int temp = idx;
 
     // Compute the multi-dimensional index
@@ -60,8 +77,8 @@ __global__ void contract_tensor_baseline(const Complex* state, const Complex* ga
             old_linear_idx += old_idx[i] * factor;
             factor *= shape[i];
         }
-
-        atomicAdd(&new_state[idx], cuCmul(gate[new_idx[qubit][j]], state[old_linear_idx]));
+        AddComplex(&new_state[idx], cuCmul(gate[new_idx[qubit] * 2 + j], state[old_linear_idx]));
+        }
     }
 }
 
