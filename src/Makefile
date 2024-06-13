@@ -1,5 +1,6 @@
-TARGET	= grover
-OBJS	= main.o utils.o
+TARGET_OMP	= grover_omp
+# TARGET_CUDA1 = grover_cuda1
+OBJS	= grover_omp.o utils_omp.o
 
 OPT	= -g -O3
 ISA	=
@@ -20,9 +21,9 @@ F90C  	= gfortran
 CUDA_PATH ?= /appl/cuda/12.2.2
 INCLUDES = -I$(CUDA_PATH)/include -I$(CUDA_PATH)/samples/Common
 
-all: $(TARGET)
+all: $(TARGET_OMP)
 
-$(TARGET): $(OBJS)
+$(TARGET_OMP): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) -lm
 
 .SUFFIXES: .cu .c
@@ -36,8 +37,8 @@ clean:
 	@/bin/rm -f *.o core
 
 realclean: clean
-	@rm -f $(TARGET)
+	@rm -f $(TARGET_OMP)
 
 # dependencies
-main.o: main.c utils.h
-utils.o: utils.c utils.h
+grover_omp.o: grover_omp.c utils_omp.h
+utils_omp.o: utils_omp.c utils_omp.h
