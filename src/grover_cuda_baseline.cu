@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <cuComplex.h>
 #include <math.h>
@@ -10,24 +9,20 @@
 
 typedef cuDoubleComplex Complex;
 
-
-// Define a complex number type for simplicity
-typedef double complex Complex;
-
 int main(int argc, char* argv[]) {
 
     // collect input args
-    if (argc < 6) {
-        fprintf(stderr, "Usage: %s n qubits<int>; marked state<int>; number of samples<int>; fileName<string>; verbose 0 or 1<int>\n", argv[0]);
-        return 1;
-    }
+    // if (argc < 6) {
+    //     fprintf(stderr, "Usage: %s n qubits<int>; marked state<int>; number of samples<int>; fileName<string>; verbose 0 or 1<int>\n", argv[0]);
+    //     return 1;
+    // }
 
     int n = atoi(argv[1]);
-    int N = (int)pow(2, n);
-    int markedState = atoi(argv[2]);
-    int numSamples = atoi(argv[3]);
-    const char* fileName = argv[4];
-    int verbose = atoi(argv[5]);
+    long long int N = (long long int)pow(2, n);
+    long long int markedState = atoi(argv[2]);
+    // int numSamples = atoi(argv[3]);
+    // const char* fileName = argv[4];
+    // int verbose = atoi(argv[5]);
 
     if (markedState > (N-1)) {
         fprintf(stderr, "You chose a markedState %d but the largest state possible is state %d", markedState, (N-1));
@@ -70,15 +65,33 @@ int main(int argc, char* argv[]) {
 
     int *shape_h;
     int *shape_d;
-    int *new_idx;
-    int *old_idx;
+    int *new_idx_d;
+    int *old_idx_d;
 
     // Malloc on device and host
-    cudaMallocHost((void **)&state_h, N * sizeof(Complex));
-    cudaMalloc((void **)&state_d, N * sizeof(Complex));
 
+    // Init the temp new state for the results
     cudaMallocHost((void **)&new_state_h, N * sizeof(Complex));
     cudaMalloc((void **)&new_state_d, N * sizeof(Complex));
+    for (int i = 0; i < N; ++i) {
+        new_state_h[i] = make_cuDoubleComplex(0.0, 0.0);
+    }
+    cudaMemcpy(new_state_d, new_state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
+
+    // We don't need it in on the host
+    cudaFreeHost(new_state_h);
+
+
+
+    // Init the state
+    cudaMallocHost((void **)&state_h, N * sizeof(Complex));
+    cudaMalloc((void **)&state_d, N * sizeof(Complex));
+    // Init the |0>^(xn) state and the new_state
+    state_h[0] = make_cuDoubleComplex(1.0, 0.0);
+    for (int i = 1; i < N; ++i) {
+        state_h[i] = make_cuDoubleComplex(0.0, 0.0);
+    }
+    cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
 
     cudaMallocHost((void **)&shape_h, n * sizeof(int));
     cudaMalloc((void **)&shape_d, n * sizeof(int));
@@ -89,30 +102,21 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void **)&Z_d, 4 * sizeof(Complex));
     cudaMalloc((void **)&X_d, 4 * sizeof(Complex));
 
-    // Malloc the indices on the device
-    cudaMalloc((void **)&new_idx, n * sizeof(int));
-    cudaMalloc((void **)&old_idx, n * sizeof(int));
 
-    // Init a superposition of qubits
-    state_h[0] = make_cuDoubleComplex(1.0, 0.0);
-    for (int i = 1; i < N; ++i) {
-        state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    }
 
-    for (int i = 0; i < N; ++i) {
-        new_state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    }
 
-    for (int i = 0; i < N; ++i) {
-        printf("state[%d] = (%f, %f)\n", i, cuCreal(state_h[i]), cuCimag(state_h[i]));
-    }
-
+    // Init the shape depending on the number of qubits
+    // each qubit is a column vector of size 2
+    // e.g. |0> = [1, 0]
+    // Thus, for n=3 qubits (N=8) the tensor will have a shape of 2,2,2
     for (int i = 0; i < n; ++i) {
         shape_h[i] = 2;
     }
 
-    cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
-    cudaMemcpy(new_state_d, new_state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
+
+
+
+    // Copy from host to device
     cudaMemcpy(shape_d, shape_h, n * sizeof(int), cudaMemcpyHostToDevice);
 
     cudaMemcpy(H_d, H_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
@@ -121,70 +125,114 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(X_d, X_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
 
 
-    dim3 dimBlock(256);
+    dim3 dimBlock(1024);
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
+    // dim3 dimGrid(128);
+
+        // Malloc the indices on the device
+    // cudaMalloc(&new_idx_d, dimBlock.x * n * sizeof(int));
+    // cudaMalloc(&old_idx_d, dimBlock.x * n * sizeof(int));
+    cudaMalloc(&new_idx_d, dimGrid.x * dimBlock.x * n * sizeof(int));
+    cudaMalloc(&old_idx_d, dimGrid.x * dimBlock.x * n * sizeof(int));
 
     double time = omp_get_wtime();
-
-
-
-
 
 
 
 
     // Now apply the H gate n times, once for each qubit
-    for (int i = 0; i < n; ++i) {
-        applyGateSingleQubit(state, H, new_state, shape, n, N, i);
-    }
+    // for (int i = 0; i < n; ++i) {
+    // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
+    // cudaDeviceSynchronize();
+    // updateState<<<dimGrid, dimBlock>>>(state_d, new_state_d, N);
+    // cudaDeviceSynchronize();
+    // zeroOutState<<<dimGrid, dimBlock>>>(new_state_d, N);
+    // cudaDeviceSynchronize();
+    // }
+    applyGateAllQubits(state_d, H_d, new_state_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid);
+    // applyGateAllQubits(state_d, H_d, new_state_d, shape_d, n, N, dimBlock, dimGrid);
 
-    if (verbose == 1) {
-        printState(state, N, "Initial state");
-    }
-
+    // cudaDeviceSynchronize();
     // Apply Grover's algorithm k iteration and then sample
-    if (verbose == 1) {
-        printf("Running %d round(s)\n", k);
-    }
+    // if (verbose == 1) {
+    //     printf("Running %d round(s)\n", k);
+    // }
 
-    double time = omp_get_wtime();
 
-    for (int i = 0; i < k; ++i) {
-        if (verbose == 1) {
-            printf("%d/%d\n", i, k);
-        }
-        // Apply Oracle
-        applyPhaseFlip(state, markedState);
-        if (verbose == 1) {
-            printState(state, N, "Oracle applied");
-        }
-        // Apply the diffusion operator
-        applyDiffusionOperator(state, new_state, shape, H, X, Z, n, N);
-        if (verbose == 1) {
-            printState(state, N, "After Diffusion");
-        }
-    }
 
+    // for (int i = 0; i < k; ++i) {
+    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+    //     applyDiffusionOperator(state_d, new_state_d, shape_d, H_d, X_d, Z_d, n, N, dimBlock, dimGrid);
+    //     cudaDeviceSynchronize();
+    // }
+
+    // cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
 
-    // Sample the states wheighted by their amplitudes
-    double* averages = simulate(state, N, numSamples);
-    if (verbose == 1) {
-        printf("Average frequency per position:\n");
-        for (int i = 0; i < N; ++i) {
-            printf("Position %d: %f\n", i, averages[i]);
-        }
-    }
+
+    cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
+
+    // if (verbose == 1) {
+    printState(state_h, N, "Initial state");
+    // }
+
+    // // Apply Grover's algorithm k iteration and then sample
+    // if (verbose == 1) {
+    //     printf("Running %d round(s)\n", k);
+    // }
+
+    // double time = omp_get_wtime();
+
+    // for (int i = 0; i < k; ++i) {
+    //     if (verbose == 1) {
+    //         printf("%d/%d\n", i, k);
+    //     }
+    //     // Apply Oracle
+    //     applyPhaseFlip(state, markedState);
+    //     if (verbose == 1) {
+    //         printState(state, N, "Oracle applied");
+    //     }
+    //     // Apply the diffusion operator
+    //     applyDiffusionOperator(state, new_state, shape, H, X, Z, n, N);
+    //     if (verbose == 1) {
+    //         printState(state, N, "After Diffusion");
+    //     }
+    // }
+
+    // double elapsed = omp_get_wtime() - time;
+    // printf("Time: %f \n", elapsed);
+
+    // // Sample the states wheighted by their amplitudes
+    // double* averages = simulate(state, N, numSamples);
+    // if (verbose == 1) {
+    //     printf("Average frequency per position:\n");
+    //     for (int i = 0; i < N; ++i) {
+    //         printf("Position %d: %f\n", i, averages[i]);
+    //     }
+    // }
 
 
-    // save the data
-    saveArrayToCSV(averages, N, fileName);
+    // // save the data
+    // saveArrayToCSV(averages, N, fileName);
 
-    free(averages);
-    free(shape);
-    free(state);
-    free(new_state);
+    // free(averages);
+    // free(shape);
+    // free(state);
+    // free(new_state);
+
+    // cudaFree(state_d);
+    // cudaFree(new_state_d);
+    // cudaFree(shape_d);
+    // cudaFree(H_d);
+    // cudaFreeHost(state_h);
+
+    // cudaFreeHost(shape_h);
+
+    // cudaFreeHost(H_h);
+    // cudaFreeHost(I_h);
+    // cudaFreeHost(Z_h);
+    // cudaFreeHost(X_h);
 
     return 0;
 }

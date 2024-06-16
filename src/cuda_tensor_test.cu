@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <cuComplex.h>
 #include <math.h>
 #include <string.h>
@@ -157,7 +156,7 @@ int main() {
     // const Complex* state, const Complex* gate,
     //                                  int qubit, Complex* new_state,
     //                                  const int* shape, const int n, int total_elements
-    zeroOutState<<<dimGrid, dimBlock>>>(new_state_d, N);
+    // zeroOutState<<<dimGrid, dimBlock>>>(new_state_d, N);
     contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 0, new_state_d, shape_d, 3, N);
     // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state_d, H_d, 0, new_state_d, shape_d, 3, N, new_idx, old_idx);
     // zeroOutInt<<<dimGrid, dimBlock>>>(new_idx, n);
