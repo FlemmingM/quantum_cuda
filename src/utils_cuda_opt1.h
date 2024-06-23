@@ -58,7 +58,7 @@ void applyDiffusionOperator(
 
 void saveArrayToCSV(const double *array, int N, const char* filename);
 
-__global__ void contract_tensor_baseline(
+__global__ void contract_tensor(
     const Complex* state,
     const Complex* gate,
     int qubit,
