@@ -44,5 +44,6 @@ void contract_tensor(const Complex* state,
                      Complex* new_state,
                      const int* shape, int n);
 void printState(const Complex* state, int N, const char* message);
+void zeroOutArray(Complex* array, int length);
 
 #endif // UTILS_H
