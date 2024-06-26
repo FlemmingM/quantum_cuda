@@ -65,10 +65,11 @@ __global__ void contract_tensor(
         int* new_idx,
         int* old_idx,
         const int n,
-        const long long int N
+        const long long int N,
+        const int stream_offset
     ) {
     extern __shared__ Complex shared_mem[]; // Use shared memory
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int idx = stream_offset + blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
 
     if (idx < N) {
@@ -105,6 +106,7 @@ __global__ void contract_tensor(
 
         // Perform reduction to sum two neighbor elements
         new_state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
+        printf("%f\n", cuCreal(new_state[idx]));
 
     }
 }
@@ -114,76 +116,76 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx) {
     state[idx] = cuCmul(state[idx], make_cuDoubleComplex(-1.0, 0.0));
 }
 
-void applyGateAllQubits(
-    Complex* state,
-    const Complex* gate,
-    Complex* new_state,
-    const int* shape,
-    int* new_idx,
-    int* old_idx,
-    int n,
-    long long int N,
-    dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
-    ) {
+// void applyGateAllQubits(
+//     Complex* state,
+//     const Complex* gate,
+//     Complex* new_state,
+//     const int* shape,
+//     int* new_idx,
+//     int* old_idx,
+//     int n,
+//     long long int N,
+//     dim3 dimBlock,
+//     dim3 dimGrid,
+//     int sharedMemSize
+//     ) {
 
-    for (int i = 0; i < n; ++i) {
-        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_state, shape, new_idx, old_idx, n, N);
-        // contract_tensor<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
-        // cudaDeviceSynchronize();
-        // Update the state with the new state
-        updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
-        // cudaDeviceSynchronize();
-        zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
-        // cudaDeviceSynchronize();
-    }
-}
+//     for (int i = 0; i < n; ++i) {
+//         contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_state, shape, new_idx, old_idx, n, N);
+//         // contract_tensor<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
+//         // cudaDeviceSynchronize();
+//         // Update the state with the new state
+//         updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
+//         // cudaDeviceSynchronize();
+//         zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
+//         // cudaDeviceSynchronize();
+//     }
+// }
 
-void applyGateSingleQubit(
-    Complex* state,
-    const Complex* gate,
-    Complex* new_state,
-    const int* shape,
-    int* new_idx,
-    int* old_idx,
-    int n,
-    long long int N,
-    long long int idx,
-    dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
-    ) {
+// void applyGateSingleQubit(
+//     Complex* state,
+//     const Complex* gate,
+//     Complex* new_state,
+//     const int* shape,
+//     int* new_idx,
+//     int* old_idx,
+//     int n,
+//     long long int N,
+//     long long int idx,
+//     dim3 dimBlock,
+//     dim3 dimGrid,
+//     int sharedMemSize
+//     ) {
 
-    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_state, shape, new_idx, old_idx, n, N);
-    // Update the state with the new state
-    updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
-    zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
-}
+//     contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_state, shape, new_idx, old_idx, n, N);
+//     // Update the state with the new state
+//     updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
+//     zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
+// }
 
-void applyDiffusionOperator(
-    Complex* state,
-    Complex* new_state,
-    const int* shape,
-    const Complex* H,
-    const Complex* X,
-    const Complex* Z,
-    int* new_idx,
-    int* old_idx,
-    int n,
-    long long int N,
-    dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
-    ) {
-    applyGateAllQubits(state, H, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
-    applyGateAllQubits(state, X, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
-    applyPhaseFlip<<<dimGrid, dimBlock>>>(state, N - 1);
-    applyGateSingleQubit(state, Z, new_state, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
-    applyGateAllQubits(state, X, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
-    applyGateSingleQubit(state, Z, new_state, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
-    applyGateAllQubits(state, H, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
-}
+// void applyDiffusionOperator(
+//     Complex* state,
+//     Complex* new_state,
+//     const int* shape,
+//     const Complex* H,
+//     const Complex* X,
+//     const Complex* Z,
+//     int* new_idx,
+//     int* old_idx,
+//     int n,
+//     long long int N,
+//     dim3 dimBlock,
+//     dim3 dimGrid,
+//     int sharedMemSize
+//     ) {
+//     applyGateAllQubits(state, H, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+//     applyGateAllQubits(state, X, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+//     applyPhaseFlip<<<dimGrid, dimBlock>>>(state, N - 1);
+//     applyGateSingleQubit(state, Z, new_state, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+//     applyGateAllQubits(state, X, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+//     applyGateSingleQubit(state, Z, new_state, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+//     applyGateAllQubits(state, H, new_state, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+// }
 
 // double* simulate(const Complex* weights, int numElements, int numSamples) {
 //     if (numElements <= 0 || numSamples <= 0) {

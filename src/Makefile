@@ -2,11 +2,13 @@ TARGET_OMP	= grover_omp
 TARGET_CUDA1 = grover_cuda_baseline
 TARGET_CUDA2 = grover_cuda_opt1
 TARGET_CUDA3 = grover_cuda_opt2
+TARGET_CUDA4 = grover_cuda_opt3
 
 OBJS_OMP	= grover_omp.o utils_omp.o
 OBJS_CUDA1  = grover_cuda_baseline.o utils_cuda.o
 OBJS_CUDA2  = grover_cuda_opt1.o utils_cuda_opt1.o
 OBJS_CUDA3  = grover_cuda_opt2.o utils_cuda_opt2.o
+OBJS_CUDA4  = grover_cuda_opt3.o utils_cuda_opt3.o
 
 
 OPT	= -g -O3
@@ -28,7 +30,7 @@ F90C  	= gfortran
 CUDA_PATH ?= /appl/cuda/12.2.2
 INCLUDES = -I$(CUDA_PATH)/include -I$(CUDA_PATH)/samples/Common
 
-all: $(TARGET_OMP) $(TARGET_CUDA1) $(TARGET_CUDA2) $(TARGET_CUDA3)
+all: $(TARGET_OMP) $(TARGET_CUDA1) $(TARGET_CUDA2) $(TARGET_CUDA3) $(TARGET_CUDA4)
 
 $(TARGET_OMP): $(OBJS_OMP)
 	$(CC) $(CFLAGS) -o $@ $(OBJS_OMP) -lm
@@ -41,6 +43,9 @@ $(TARGET_CUDA2): $(OBJS_CUDA2)
 
 $(TARGET_CUDA3): $(OBJS_CUDA3)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS_CUDA3) -lm
+
+$(TARGET_CUDA4): $(OBJS_CUDA4)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS_CUDA4) -lm
 
 .SUFFIXES: .cu .c
 .cu.o:
@@ -57,6 +62,7 @@ realclean: clean
 	@rm -f $(TARGET_CUDA1)
 	@rm -f $(TARGET_CUDA2)
 	@rm -f $(TARGET_CUDA3)
+	@rm -f $(TARGET_CUDA4)
 
 # dependencies
 grover_omp.o: grover_omp.c utils_omp.h
@@ -67,3 +73,5 @@ grover_cuda_opt1.o: grover_cuda_opt1.cu utils_cuda_opt1.h
 utils_cuda_opt1.o: utils_cuda_opt1.cu utils_cuda_opt1.h
 grover_cuda_opt2.o: grover_cuda_opt2.cu utils_cuda_opt2.h
 utils_cuda_opt2.o: utils_cuda_opt2.cu utils_cuda_opt2.h
+grover_cuda_opt3.o: grover_cuda_opt3.cu utils_cuda_opt3.h
+utils_cuda_opt3.o: utils_cuda_opt3.cu utils_cuda_opt3.h
