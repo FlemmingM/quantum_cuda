@@ -24,8 +24,7 @@ void applyGateAllQubits(
     int n,
     long long int N,
     dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
+    dim3 dimGrid
     );
 
 void applyGateSingleQubit(
@@ -39,8 +38,7 @@ void applyGateSingleQubit(
     long long int N,
     long long int idx,
     dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
+    dim3 dimGrid
     );
 
 void applyDiffusionOperator(
@@ -55,8 +53,7 @@ void applyDiffusionOperator(
     int n,
     long long int N,
     dim3 dimBlock,
-    dim3 dimGrid,
-    int sharedMemSize
+    dim3 dimGrid
     );
 
 void saveArrayToCSV(const double *array, int N, const char* filename);

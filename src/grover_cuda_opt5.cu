@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <omp.h>
-#include "utils_cuda_opt3.h"
+#include "utils_cuda_opt5.h"
 
 typedef cuDoubleComplex Complex;
 
@@ -128,8 +128,6 @@ int main(int argc, char* argv[]) {
     const int gridSize = (N + blockSize - 1) / blockSize;
 
     // Allocate shared memory for reduction
-    // int sharedMemSize = blockSize * sizeof(Complex);
-    int sharedMemSize = 2*N * sizeof(Complex);
 
     // Malloc the indices on the device
     cudaMalloc(&new_idx_d, gridSize * blockSize * n * sizeof(int));
@@ -145,7 +143,7 @@ int main(int argc, char* argv[]) {
     double time = omp_get_wtime();
 
 
-    // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
+    // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
     // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
 
         // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
@@ -158,7 +156,7 @@ int main(int argc, char* argv[]) {
 
 
     // Now apply the H gate n times, once for each qubit
-    applyGateAllQubits(state_d, H_d, new_state_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state_d, H_d, new_state_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid);
 
     // cudaDeviceSynchronize();
 
@@ -170,7 +168,7 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < k; ++i) {
         applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-        applyDiffusionOperator(state_d, new_state_d, shape_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
+        applyDiffusionOperator(state_d, new_state_d, shape_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid);
         // cudaDeviceSynchronize();
     }
 

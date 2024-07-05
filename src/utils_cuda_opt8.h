@@ -17,7 +17,6 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx);
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
-    Complex* new_state,
     const int* shape,
     int* new_idx,
     int* old_idx,
@@ -25,13 +24,13 @@ void applyGateAllQubits(
     long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
 void applyGateSingleQubit(
     Complex* state,
     const Complex* gate,
-    Complex* new_state,
     const int* shape,
     int* new_idx,
     int* old_idx,
@@ -40,13 +39,14 @@ void applyGateSingleQubit(
     long long int idx,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
 void applyDiffusionOperator(
     Complex* state,
-    Complex* new_state,
     const int* shape,
+    const Complex* X_H,
     const Complex* H,
     const Complex* X,
     const Complex* Z,
@@ -56,21 +56,32 @@ void applyDiffusionOperator(
     long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
 void saveArrayToCSV(const double *array, int N, const char* filename);
 
+__global__ void compute_idx(
+        int qubit,
+        const int* shape,
+        int* new_idx,
+        int* old_idx,
+        const int n,
+        const long long int N,
+        int* old_linear_idxs
+    );
+
 __global__ void contract_tensor(
-    const Complex* state,
+    Complex* state,
     const Complex* gate,
     int qubit,
-    Complex* new_state,
     const int* shape,
     int* new_idx,
     int* old_idx,
     const int n,
-    long long int N
+    long long int N,
+    int* old_linear_idxs
     );
 
 __global__ void zeroOutState(Complex* new_state, long long int N);

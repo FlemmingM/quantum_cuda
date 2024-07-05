@@ -46,8 +46,8 @@ int main() {
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
     float *d_data0, *d_data1, *d_data2;
 
-    float *h_data0 = new float[N];
-    for (int i = 0; i < N; ++i) {
+    float *h_data0 = new float[2*N];
+    for (int i = 0; i < (2*N); ++i) {
         h_data0[i] = 0.0;
     }
 
@@ -99,8 +99,8 @@ int main() {
     CUDA_CHECK(cudaStreamCreate(&streams[i]));
 
     if (i == 0) {
-    CUDA_CHECK(cudaMalloc((void**)&d_data0, N * sizeof(float)));
-    CUDA_CHECK(cudaMemcpyAsync(d_data0, h_data0, N * sizeof(float), cudaMemcpyHostToDevice, streams[i]));
+    CUDA_CHECK(cudaMalloc((void**)&d_data0, 2 * N * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyAsync(d_data0, h_data0, 2 * N * sizeof(float), cudaMemcpyHostToDevice, streams[i]));
      } else {
     CUDA_CHECK(cudaMalloc((void**)&d_data1, N * sizeof(float)));
     CUDA_CHECK(cudaMemcpyAsync(d_data1, h_data1, N * sizeof(float), cudaMemcpyHostToDevice, streams[i]));
@@ -132,17 +132,17 @@ int main() {
 
 
     // Copy result back to host
-    if (i == 0) {
-        CUDA_CHECK(cudaMemcpyAsync(h_data_res, d_data0, N * sizeof(float), cudaMemcpyDeviceToHost, streams[i]));
-        // CUDA_CHECK(cudaMemcpyPeer(d_data0 + N, 0, d_data1, 1, N * sizeof(float)));
+    if (i == 1) {
+        // CUDA_CHECK(cudaMemcpyAsync(h_data_res, d_data0, N * sizeof(float), cudaMemcpyDeviceToHost, streams[i]));
+        CUDA_CHECK(cudaMemcpyPeer(d_data0 + N, 0, d_data1, 1, N * sizeof(float)));
 
 
     }
-    else {
-        CUDA_CHECK(cudaMemcpyAsync(h_data_res + N, d_data1, N * sizeof(float), cudaMemcpyDeviceToHost, streams[i]));
+    // else {
+        // CUDA_CHECK(cudaMemcpyAsync(h_data_res + N, d_data1, N * sizeof(float), cudaMemcpyDeviceToHost, streams[i]));
         // CUDA_CHECK(cudaMemcpyPeer(d_data0 + N, 0, d_data1, 1, N * sizeof(float)));
 
-    }
+    // }
 
     // CUDA_CHECK(cudaSetDevice(1));
 
@@ -162,7 +162,7 @@ int main() {
     CUDA_CHECK(cudaStreamDestroy(streams[i]));
 }
 
-    // CUDA_CHECK(cudaMemcpy(h_data_res, d_data0, 2 * N * sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_data_res, d_data0, 2 * N * sizeof(float), cudaMemcpyDeviceToHost));
 
 
     double elapsed = omp_get_wtime() - time;
