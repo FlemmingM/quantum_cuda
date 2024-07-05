@@ -56,6 +56,61 @@ __global__ void updateState(Complex* state, Complex* new_state, long long int N)
 }
 
 
+// __global__ void compute_idx(
+//     int qubit,
+//     const int* shape,
+//     int* new_idx,
+//     int* old_idx,
+//     const int n,
+//     const long long int N,
+//     int* old_linear_idxs
+// ) {
+//     int idx = blockDim.x * blockIdx.x + threadIdx.x;
+//     int offset = idx * n;
+//     int offset2 = blockDim.x * gridDim.x;
+
+//     extern __shared__ int shared_mem[];
+//     int* shared_new_idx = shared_mem;
+//     int* shared_old_idx = shared_mem + n * blockDim.x;
+
+//     if (idx < N) {
+//         int temp = idx;
+
+//         // Compute the multi-dimensional index
+//         for (int i = n - 1; i >= 0; --i) {
+//             shared_new_idx[threadIdx.x * n + i] = temp % shape[i];
+//             temp /= shape[i];
+//         }
+
+//         // Copy new_idx to old_idx
+//         for (int i = 0; i < n; ++i) {
+//             shared_old_idx[threadIdx.x * n + i] = shared_new_idx[threadIdx.x * n + i];
+//         }
+
+//         // Compute the two values for j = 0 and j = 1 and store in global memory
+//         for (int j = 0; j < 2; ++j) {
+//             shared_old_idx[threadIdx.x * n + qubit] = j;
+
+//             // Compute the linear index for old_idx
+//             int old_linear_idx = 0;
+//             int factor = 1;
+//             for (int i = n - 1; i >= 0; --i) {
+//                 old_linear_idx += shared_old_idx[threadIdx.x * n + i] * factor;
+//                 factor *= shape[i];
+//             }
+//             // Write to global memory in a coalesced manner
+//             old_linear_idxs[idx + j * offset2] = old_linear_idx;
+//         }
+
+//         // Write shared memory back to global memory
+//         for (int i = 0; i < n; ++i) {
+//             new_idx[offset + i] = shared_new_idx[threadIdx.x * n + i];
+//             old_idx[offset + i] = shared_old_idx[threadIdx.x * n + i];
+//         }
+//     }
+// }
+
+
 __global__ void compute_idx(
         int qubit,
         const int* shape,
@@ -67,7 +122,14 @@ __global__ void compute_idx(
     ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
-    int offset2 = blockDim.x * gridDim.x;
+    // int offset2 = blockDim.x * gridDim.x;
+    int offset2 = qubit*2*N;
+    // TODO: make shape shared
+    //       make offset2 coalesced
+    //       use reduction for old_linear_idx
+    //       run all idxs for all qubits in parallel
+    // printf("offset: %d\n", offset);
+    // printf("offset2: %d\n", offset2);
 
     if (idx < N) {
         int temp = idx;
@@ -95,7 +157,13 @@ __global__ void compute_idx(
                 factor *= shape[i];
             }
             // old_linear_idxs[idx + j*N] = old_linear_idx;
-            old_linear_idxs[offset + offset2 * j + qubit] = old_linear_idx;
+            // printf("idx: %d, old_lin_idx_pos: %lld = %d \n", idx, (idx + j*N), old_linear_idx);
+            // printf("idx: %d, old_lin_idx_pos: %d \n", idx, (idx + j*N));
+            // old_linear_idxs[offset + offset2 * j + qubit] = old_linear_idx;
+            old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
+
+            // old_linear_idxs[idx + j*N] = old_linear_idx;
+
         }
     }
 }
@@ -121,12 +189,17 @@ __global__ void contract_tensor(
         // Compute the two values for j = 0 and j = 1 and store in shared memory
         for (int j = 0; j < 2; ++j) {
             // Store the result in shared memory
-            shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[offset + offset2 * j + qubit]]);
+            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
+            shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
+
+            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N]]);
+
         }
 
         __syncthreads();
 
-        state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
+        state[idx] = cuCadd(shared_mem[idx + 1], shared_mem[idx]);
+        // state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
     }
 }
 

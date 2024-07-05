@@ -69,6 +69,7 @@ int main(int argc, char* argv[]) {
     int *shape_d;
     int *new_idx_d;
     int *old_idx_d;
+    int *old_linear_idxs_h;
     int *old_linear_idxs_d;
 
     // Malloc on device and host
@@ -139,13 +140,16 @@ int main(int argc, char* argv[]) {
     // Allocate shared memory for reduction
     // int sharedMemSize = blockSize * sizeof(Complex);
     int sharedMemSize = 2*N * sizeof(Complex);
+    int sharedMemSize2 = 2*N * sizeof(int);
 
     // Malloc the indices on the device
     cudaMalloc(&new_idx_d, gridSize * blockSize * n * sizeof(int));
     cudaMalloc(&old_idx_d, gridSize * blockSize * n * sizeof(int));
-    // cudaMalloc(&old_linear_idxs_d, 2 * N * sizeof(int));
-    cudaMalloc(&old_linear_idxs_d, gridSize * blockSize * 2 * n * sizeof(int));
 
+    // cudaMallocHost(&old_linear_idxs_h, 2 * N * n * sizeof(int));
+    cudaMalloc(&old_linear_idxs_d, 2 * N * n * sizeof(int));
+    // cudaMalloc(&old_linear_idxs_d, gridSize * blockSize * 2 * n * sizeof(int));
+    // cudaMalloc(&old_linear_idxs_d, gridSize * blockSize * 2 * n * sizeof(int));
 
     // Assuming we have t = 1 solution in grover's algorithm
     // we have k = floor(pi/4 * sqrt(N))
@@ -156,9 +160,15 @@ int main(int argc, char* argv[]) {
     double time = omp_get_wtime();
 
     for (int i = 0; i < n; ++i) {
-        compute_idx<<<gridSize, blockSize>>>(i, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+        compute_idx<<<gridSize, blockSize, sharedMemSize2>>>(i, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     }
-    // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
+
+
+    // for (int i = 0; i < (2*N*n); ++i) {
+    //     printf("%d ", old_linear_idxs_h[i]);
+    // }
+    contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
 
         // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
@@ -171,7 +181,7 @@ int main(int argc, char* argv[]) {
 
 
     // Now apply the H gate n times, once for each qubit
-    applyGateAllQubits(state_d, H_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    // applyGateAllQubits(state_d, H_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
 
     // cudaDeviceSynchronize();
 
@@ -181,11 +191,11 @@ int main(int argc, char* argv[]) {
     //     printf("Running %d round(s)\n", k);
     // }
 
-    for (int i = 0; i < k; ++i) {
-        applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-        applyDiffusionOperator(state_d, shape_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
-        // cudaDeviceSynchronize();
-    }
+    // for (int i = 0; i < k; ++i) {
+    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+    //     applyDiffusionOperator(state_d, shape_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    //     // cudaDeviceSynchronize();
+    // }
 
     cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
