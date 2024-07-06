@@ -40,10 +40,10 @@ __device__ void AddComplex(cuDoubleComplex* a, cuDoubleComplex b){
   atomicAdd(y, cuCimag(b));
 }
 
-__global__ void zeroOutState(int* new_state, long long int N) {
+__global__ void zeroOutState(Complex* new_state, long long int N) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < N) {
-        new_state[idx] = 0;
+        new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
     }
 }
 
@@ -57,77 +57,74 @@ __global__ void updateState(Complex* state, Complex* new_state, long long int N)
 
 
 // __global__ void compute_idx(
-//         int qubit,
-//         const int* shape,
-//         int* new_idx,
-//         int* old_idx,
-//         const int n,
-//         const long long int N,
-//         int* old_linear_idxs
-//     ) {
+//     int qubit,
+//     const int* shape,
+//     int* new_idx,
+//     int* old_idx,
+//     const int n,
+//     const long long int N,
+//     int* old_linear_idxs
+// ) {
 //     int idx = blockDim.x * blockIdx.x + threadIdx.x;
 //     int offset = idx * n;
-//     // int offset2 = blockDim.x * gridDim.x;
-//     int offset2 = qubit*2*N;
-//     // TODO: make shape shared
-//     //       make offset2 coalesced
-//     //       use reduction for old_linear_idx
-//     //       run all idxs for all qubits in parallel
-//     // printf("offset: %d\n", offset);
-//     // printf("offset2: %d\n", offset2);
+//     int offset2 = blockDim.x * gridDim.x;
+
+//     extern __shared__ int shared_mem[];
+//     int* shared_new_idx = shared_mem;
+//     int* shared_old_idx = shared_mem + n * blockDim.x;
 
 //     if (idx < N) {
 //         int temp = idx;
 
 //         // Compute the multi-dimensional index
 //         for (int i = n - 1; i >= 0; --i) {
-//             new_idx[offset + i] = temp % shape[i];
+//             shared_new_idx[threadIdx.x * n + i] = temp % shape[i];
 //             temp /= shape[i];
 //         }
 
 //         // Copy new_idx to old_idx
 //         for (int i = 0; i < n; ++i) {
-//             old_idx[offset + i] = new_idx[offset + i];
+//             shared_old_idx[threadIdx.x * n + i] = shared_new_idx[threadIdx.x * n + i];
 //         }
 
-//         // Compute the two values for j = 0 and j = 1 and store in shared memory
+//         // Compute the two values for j = 0 and j = 1 and store in global memory
 //         for (int j = 0; j < 2; ++j) {
-//             old_idx[offset + qubit] = j;
+//             shared_old_idx[threadIdx.x * n + qubit] = j;
 
 //             // Compute the linear index for old_idx
 //             int old_linear_idx = 0;
 //             int factor = 1;
 //             for (int i = n - 1; i >= 0; --i) {
-//                 old_linear_idx += old_idx[offset + i] * factor;
+//                 old_linear_idx += shared_old_idx[threadIdx.x * n + i] * factor;
 //                 factor *= shape[i];
 //             }
-//             // old_linear_idxs[idx + j*N] = old_linear_idx;
-//             // printf("idx: %d, old_lin_idx_pos: %lld = %d \n", idx, (idx + j*N), old_linear_idx);
-//             // printf("idx: %d, old_lin_idx_pos: %d \n", idx, (idx + j*N));
-//             // old_linear_idxs[offset + offset2 * j + qubit] = old_linear_idx;
-//             old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
+//             // Write to global memory in a coalesced manner
+//             old_linear_idxs[idx + j * offset2] = old_linear_idx;
+//         }
 
-//             // old_linear_idxs[idx + j*N] = old_linear_idx;
-
+//         // Write shared memory back to global memory
+//         for (int i = 0; i < n; ++i) {
+//             new_idx[offset + i] = shared_new_idx[threadIdx.x * n + i];
+//             old_idx[offset + i] = shared_old_idx[threadIdx.x * n + i];
 //         }
 //     }
 // }
 
+
 __global__ void compute_idx(
         int qubit,
+        const int* shape,
         int* new_idx,
         int* old_idx,
         const int n,
         const long long int N,
-        int* shared_idxs,
-        const int warp_size
+        int* old_linear_idxs
     ) {
-    // extern __shared__ int shared_memory[]; // Use shared memory
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
     // int offset2 = blockDim.x * gridDim.x;
-    int offset2 = qubit*2*warp_size*N;
-    // TODO: make shape shared - yes
+    int offset2 = qubit*2*N;
+    // TODO: make shape shared
     //       make offset2 coalesced
     //       use reduction for old_linear_idx
     //       run all idxs for all qubits in parallel
@@ -139,8 +136,8 @@ __global__ void compute_idx(
 
         // Compute the multi-dimensional index
         for (int i = n - 1; i >= 0; --i) {
-            new_idx[offset + i] = temp % 2;
-            temp /= 2;
+            new_idx[offset + i] = temp % shape[i];
+            temp /= shape[i];
         }
 
         // Copy new_idx to old_idx
@@ -156,53 +153,18 @@ __global__ void compute_idx(
             int old_linear_idx = 0;
             int factor = 1;
             for (int i = n - 1; i >= 0; --i) {
-                // old_linear_idx += old_idx[offset + i] * factor;
-
-                // TODO: make shared_mem
-                // printf("idx: %d, j: %d, old_idx[offset + i] * factor: %d, offset: %d\n", idx, j, old_idx[offset + i] * factor, idx*2*warp_size + i + j*warp_size + offset2);
-                shared_idxs[idx*2*warp_size + i + j*warp_size + offset2] = old_idx[offset + i] * factor;
-                factor *= 2;
+                old_linear_idx += old_idx[offset + i] * factor;
+                factor *= shape[i];
             }
             // old_linear_idxs[idx + j*N] = old_linear_idx;
             // printf("idx: %d, old_lin_idx_pos: %lld = %d \n", idx, (idx + j*N), old_linear_idx);
             // printf("idx: %d, old_lin_idx_pos: %d \n", idx, (idx + j*N));
             // old_linear_idxs[offset + offset2 * j + qubit] = old_linear_idx;
-            // old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
-            // __syncthreads();
-            // int val = shared_memory[idx*32 + j*32*N];
-            // // int val = shared_memory[idx*32];
+            old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
 
-            // for (int i = 16; i > 0; i /= 2) {
-            //     val += __shfl_down_sync(-1, val, i);
-            // }
-            // old_linear_idxs[idx + j*N + offset2] = val;
             // old_linear_idxs[idx + j*N] = old_linear_idx;
 
-
         }
-        // shared_idxs = shared_memory;
-    }
-}
-
-__global__ void warp_sum_reduction(const int* input, int* output, int N, int warp_size) {
-    // Assuming N is a multiple of 32 (the warp size)
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    int lane = tid % warp_size; // Get the lane index within the warp
-    int warp_id = tid / warp_size; // Get the warp ID
-
-    int val = 0;
-    if (tid < N) {
-        val = input[tid];
-    }
-
-    // Perform warp-level reduction using shuffle down
-    for (int offset = warp_size / 2; offset > 0; offset /= 2) {
-        val += __shfl_down_sync(0xffffffff, val, offset, warp_size);
-    }
-
-    // Write the reduced value of each warp to the output array
-    if (lane == 0 && warp_id < (N/warp_size)) {
-        output[warp_id] = val;
     }
 }
 
@@ -211,6 +173,7 @@ __global__ void contract_tensor(
         Complex* state,
         const Complex* gate,
         int qubit,
+        const int* shape,
         int* new_idx,
         int* old_idx,
         const int n,
@@ -220,17 +183,23 @@ __global__ void contract_tensor(
     extern __shared__ Complex shared_mem[]; // Use shared memory
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
-    int offset2 = qubit*2*N;
+    int offset2 = blockDim.x * gridDim.x;
 
     if (idx < N) {
         // Compute the two values for j = 0 and j = 1 and store in shared memory
         for (int j = 0; j < 2; ++j) {
             // Store the result in shared memory
-            shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[2*idx + j + qubit*2*N]]);
+            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
+            shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
+
+            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N]]);
+
         }
+
         __syncthreads();
 
-        state[idx] = cuCadd(shared_mem[2*idx + 1], shared_mem[2*idx]);
+        state[idx] = cuCadd(shared_mem[idx + 1], shared_mem[idx]);
+        // state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
     }
 }
 
@@ -242,6 +211,7 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx) {
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
+    const int* shape,
     int* new_idx,
     int* old_idx,
     int n,
@@ -253,13 +223,14 @@ void applyGateAllQubits(
     ) {
 
     for (int i = 0; i < n; ++i) {
-        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_idx, old_idx, n, N, old_linear_idxs);
+        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, shape, new_idx, old_idx, n, N, old_linear_idxs);
     }
 }
 
 void applyGateSingleQubit(
     Complex* state,
     const Complex* gate,
+    const int* shape,
     int* new_idx,
     int* old_idx,
     int n,
@@ -271,11 +242,12 @@ void applyGateSingleQubit(
     int* old_linear_idxs
     ) {
 
-    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_idx, old_idx, n, N, old_linear_idxs);
+    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, shape, new_idx, old_idx, n, N, old_linear_idxs);
 }
 
 void applyDiffusionOperator(
     Complex* state,
+    const int* shape,
     const Complex* X_H,
     const Complex* H,
     const Complex* X,
@@ -289,12 +261,13 @@ void applyDiffusionOperator(
     int sharedMemSize,
     int* old_linear_idxs
     ) {
-    applyGateAllQubits(state, X_H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    applyGateAllQubits(state, X_H, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    // applyGateAllQubits(state, X, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
     applyPhaseFlip<<<dimGrid, dimBlock>>>(state, N - 1);
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
-    applyGateAllQubits(state, X, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
-    applyGateAllQubits(state, H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    applyGateSingleQubit(state, Z, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    applyGateAllQubits(state, X, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    applyGateSingleQubit(state, Z, shape, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
+    applyGateAllQubits(state, H, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs);
 }
 
 // double* simulate(const Complex* weights, int numElements, int numSamples) {

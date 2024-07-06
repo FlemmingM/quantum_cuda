@@ -110,7 +110,7 @@ __global__ void contract_tensor(
         // Complex val = shared_mem[idx];
         // val.x += __shfl_down_sync(-1, val.x, 0);
         // val.y += __shfl_down_sync(-1, val.y, 0);
-        // new_state[idx] = val;
+        // state[idx] = val;
         state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
 
     }

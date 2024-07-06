@@ -44,6 +44,11 @@ module load gcc/13.1.0-binutils-2.40
 - relate memory access to the algorithm and the "jumps" performed with the indices
 
 # ideas
+- write version of v4 where 2 consecutive threads are accessed
+- make shape a shared variable too?
+- async copy when idxs are pre-computed
+- compute the idxs on 2 gpus
+- change strided reads/writes to coalesced ones
 - define number of blocks as arg
 - pre-compute combined gates in the correct order and remove some of the steps in the loop
 - compute all old and new indecis up front and use them as shared arrays for the computations
@@ -63,3 +68,10 @@ module load gcc/13.1.0-binutils-2.40
 
 
 - could use async copy and index shuffling for the first computation --> probably not very effective though.... --> maybe we can show that with more qubits this might change by timing compute and memory operations and showing trends
+
+
+
+
+# How the indices look like for the old_linear_idx for n = 3
+
+0 1 2 3 0 1 2 3 | 4 5 6 7 4 5 6 7 | 0 1 0 1 4 5 4 5 2 3 2 3 6 7 6 7 0 0 2 2 4 4 6 6 1 1 3 3 5 5 7 7
