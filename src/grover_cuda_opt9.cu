@@ -65,28 +65,13 @@ int main(int argc, char* argv[]) {
     Complex *Z_d;
     Complex *X_d;
 
-    int *shape_h;
-    int *shape_d;
+
     int *new_idx_d;
     int *old_idx_d;
     int *old_linear_idxs_h;
     int *old_linear_idxs_d;
 
     // Malloc on device and host
-
-    // Init the temp new state for the results
-    // cudaMallocHost((void **)&new_state_h, N * sizeof(Complex));
-    // cudaMalloc((void **)&new_state_d, N * sizeof(Complex));
-    // for (int i = 0; i < N; ++i) {
-    //     new_state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    // }
-    // cudaMemcpy(new_state_d, new_state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
-
-    // We don't need it in on the host
-    // cudaFreeHost(new_state_h);
-
-
-
     // Init the state
     cudaMallocHost((void **)&state_h, N * sizeof(Complex));
     cudaMalloc((void **)&state_d, N * sizeof(Complex));
@@ -97,8 +82,6 @@ int main(int argc, char* argv[]) {
     }
     cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
 
-    cudaMallocHost((void **)&shape_h, n * sizeof(int));
-    cudaMalloc((void **)&shape_d, n * sizeof(int));
 
     // Malloc the gate on device
     cudaMalloc((void **)&H_d, 4 * sizeof(Complex));
@@ -107,23 +90,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void **)&Z_d, 4 * sizeof(Complex));
     cudaMalloc((void **)&X_d, 4 * sizeof(Complex));
 
-
-
-
-    // Init the shape depending on the number of qubits
-    // each qubit is a column vector of size 2
-    // e.g. |0> = [1, 0]
-    // Thus, for n=3 qubits (N=8) the tensor will have a shape of 2,2,2
-    for (int i = 0; i < n; ++i) {
-        shape_h[i] = 2;
-    }
-
-
-
-
     // Copy from host to device
-    cudaMemcpy(shape_d, shape_h, n * sizeof(int), cudaMemcpyHostToDevice);
-
     cudaMemcpy(H_d, H_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
     cudaMemcpy(X_H_d, X_H_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
     cudaMemcpy(I_d, I_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
@@ -160,7 +127,7 @@ int main(int argc, char* argv[]) {
     double time = omp_get_wtime();
 
     for (int i = 0; i < n; ++i) {
-        compute_idx<<<gridSize, blockSize, sharedMemSize2>>>(i, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+        compute_idx<<<gridSize, blockSize, sharedMemSize2>>>(i, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     }
     // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
 
@@ -168,7 +135,7 @@ int main(int argc, char* argv[]) {
     // for (int i = 0; i < (2*N*n); ++i) {
     //     printf("%d ", old_linear_idxs_h[i]);
     // }
-    contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, shape_d, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
 
         // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
@@ -181,7 +148,7 @@ int main(int argc, char* argv[]) {
 
 
     // Now apply the H gate n times, once for each qubit
-    // applyGateAllQubits(state_d, H_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
 
     // cudaDeviceSynchronize();
 
@@ -191,11 +158,11 @@ int main(int argc, char* argv[]) {
     //     printf("Running %d round(s)\n", k);
     // }
 
-    // for (int i = 0; i < k; ++i) {
-    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-    //     applyDiffusionOperator(state_d, shape_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
-    //     // cudaDeviceSynchronize();
-    // }
+    for (int i = 0; i < k; ++i) {
+        applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+        applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+        // cudaDeviceSynchronize();
+    }
 
     cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
@@ -248,11 +215,12 @@ int main(int argc, char* argv[]) {
     // saveArrayToCSV(averages, N, 'test.csv');
 
     cudaFree(state_d);
-    cudaFree(shape_d);
     cudaFree(H_d);
-
+    cudaFree(old_linear_idxs_d);
+    cudaFree(I_d);
+    cudaFree(Z_d);
+    cudaFree(X_d);
     cudaFreeHost(state_h);
-    cudaFreeHost(shape_h);
     cudaFreeHost(H_h);
     cudaFreeHost(I_h);
     cudaFreeHost(Z_h);

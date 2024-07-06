@@ -136,13 +136,6 @@ void applyGateAllQubits(
 
     for (int i = 0; i < n; ++i) {
         contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, shape, new_idx, old_idx, n, N);
-        // contract_tensor<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
-        // cudaDeviceSynchronize();
-        // Update the state with the new state
-        // updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
-        // cudaDeviceSynchronize();
-        // zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
-        // cudaDeviceSynchronize();
     }
 }
 
