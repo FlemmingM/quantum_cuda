@@ -11,5 +11,8 @@
 module load cuda/12.2.2
 module load gcc/12.3.0-binutils-2.40
 
-rm warptest_report.nsys-rep -f
-nsys profile -o warptest_report ./warptest
+# rm warptest_report.nsys-rep -f
+# nsys profile -o warptest_report ./warptest
+
+rm grover_cuda_opt9.nsys-rep -f
+nsys profile -o grover_cuda_opt9 ./grover_cuda_opt9 30 3

@@ -185,7 +185,7 @@ __global__ void compute_idx(
 }
 
 __global__ void warp_sum_reduction(const int* input, int* output, int N, int warp_size) {
-    // Assuming N is a multiple of 32 (the warp size)
+    // Assuming N is a multiple of the warp size
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int lane = tid % warp_size; // Get the lane index within the warp
     int warp_id = tid / warp_size; // Get the warp ID

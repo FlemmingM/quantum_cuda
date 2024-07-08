@@ -17,7 +17,6 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx);
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
-    const int* shape,
     int* new_idx,
     int* old_idx,
     int n,
@@ -30,7 +29,6 @@ void applyGateAllQubits(
 void applyGateSingleQubit(
     Complex* state,
     const Complex* gate,
-    const int* shape,
     int* new_idx,
     int* old_idx,
     int n,
@@ -43,7 +41,6 @@ void applyGateSingleQubit(
 
 void applyDiffusionOperator(
     Complex* state,
-    const int* shape,
     const Complex* H,
     const Complex* X,
     const Complex* Z,
@@ -62,7 +59,6 @@ __global__ void contract_tensor(
     Complex* state,
     const Complex* gate,
     int qubit,
-    const int* shape,
     int* new_idx,
     int* old_idx,
     const int n,

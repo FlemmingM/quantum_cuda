@@ -43,7 +43,11 @@ __device__ void AddComplex(cuDoubleComplex* a, cuDoubleComplex b){
 __global__ void zeroOutState(Complex* new_state, long long int N) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < N) {
-        new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
+        if(idx == 0) {
+            new_state[idx] = make_cuDoubleComplex(1.0, 0.0);
+        } else {
+            new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
+        }
     }
 }
 
@@ -119,6 +123,7 @@ __global__ void compute_idx(
         const long long int N,
         int* old_linear_idxs
     ) {
+    extern __shared__ int shared_memory[]; // Use shared memory
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
     // int offset2 = blockDim.x * gridDim.x;
@@ -155,15 +160,22 @@ __global__ void compute_idx(
                 old_linear_idx += old_idx[offset + i] * factor;
                 factor *= 2;
             }
-            // old_linear_idxs[idx + j*N] = old_linear_idx;
-            // printf("idx: %d, old_lin_idx_pos: %lld = %d \n", idx, (idx + j*N), old_linear_idx);
-            // printf("idx: %d, old_lin_idx_pos: %d \n", idx, (idx + j*N));
-            // old_linear_idxs[offset + offset2 * j + qubit] = old_linear_idx;
-            old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
+            // works!!
+            // shared_memory[idx + j*N] = old_linear_idx;
+            shared_memory[2*idx + j] = old_linear_idx;
 
-            // old_linear_idxs[idx + j*N] = old_linear_idx;
+
+            // works!!
+            // old_linear_idxs[idx + j*N + offset2] = old_linear_idx;
+
 
         }
+        old_linear_idxs[2*idx + offset2] = shared_memory[2*idx];
+        old_linear_idxs[2*idx + 1 + offset2] = shared_memory[2*idx+1];
+
+        // old_linear_idxs[idx + offset2] = shared_memory[idx];
+        // old_linear_idxs[idx + N + offset2] = shared_memory[idx+N];
+
     }
 }
 
@@ -181,23 +193,21 @@ __global__ void contract_tensor(
     extern __shared__ Complex shared_mem[]; // Use shared memory
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
-    int offset2 = blockDim.x * gridDim.x;
 
     if (idx < N) {
         // Compute the two values for j = 0 and j = 1 and store in shared memory
         for (int j = 0; j < 2; ++j) {
             // Store the result in shared memory
-            shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
-            // shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
-
-            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N]]);
+            // works!!!
+            // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[idx + j*N + qubit*2*N]]);
+            shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[2*idx + j + qubit*2*N]]);
 
         }
 
         __syncthreads();
 
-        // state[idx] = cuCadd(shared_mem[idx + 1], shared_mem[idx]);
-        state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
+        state[idx] = cuCadd(shared_mem[2*idx + 1], shared_mem[2*idx]);
+        // state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
     }
 }
 

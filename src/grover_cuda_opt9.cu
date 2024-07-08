@@ -76,11 +76,11 @@ int main(int argc, char* argv[]) {
     cudaMallocHost((void **)&state_h, N * sizeof(Complex));
     cudaMalloc((void **)&state_d, N * sizeof(Complex));
     // Init the |0>^(xn) state and the new_state
-    state_h[0] = make_cuDoubleComplex(1.0, 0.0);
-    for (int i = 1; i < N; ++i) {
-        state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    }
-    cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
+    // state_h[0] = make_cuDoubleComplex(1.0, 0.0);
+    // for (int i = 1; i < N; ++i) {
+    //     state_h[i] = make_cuDoubleComplex(0.0, 0.0);
+    // }
+    // cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
 
 
     // Malloc the gate on device
@@ -125,6 +125,8 @@ int main(int argc, char* argv[]) {
 
 
     double time = omp_get_wtime();
+
+    zeroOutState<<<gridSize, blockSize>>>(state_d, N);
 
     for (int i = 0; i < n; ++i) {
         compute_idx<<<gridSize, blockSize, sharedMemSize2>>>(i, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
