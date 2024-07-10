@@ -14,6 +14,8 @@ typedef cuDoubleComplex Complex;
 double* simulate(const Complex* weights, long long int numElements, int numSamples);
 __global__ void applyPhaseFlip(Complex* state, long long int idx);
 
+void allocateGatesDevice(const int num_devices, Complex **H_d, Complex **I_d, Complex **Z_d, Complex **X_d, Complex **X_H_d);
+
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
@@ -62,7 +64,8 @@ __global__ void contract_tensor(
     int* new_idx,
     int* old_idx,
     const int n,
-    long long int N
+    const long long int lower,
+    const long long int upper
     );
 
 __global__ void zeroOutState(Complex* new_state, long long int N);
