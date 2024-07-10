@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(X_d, X_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
 
 
-    dim3 dimBlock(1024);
+    dim3 dimBlock(256);
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
 
     // Malloc the indices on the device
@@ -164,9 +164,7 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
-    // if (verbose == 1) {
     // printState(state_h, N, "Initial state");
-    // }
 
 
     // // Sample the states wheighted by their amplitudes

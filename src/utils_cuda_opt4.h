@@ -22,10 +22,11 @@ void applyGateAllQubits(
     int* new_idx,
     int* old_idx,
     int n,
-    long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    const long long int lower,
+    const long long int upper
     );
 
 void applyGateSingleQubit(
@@ -34,25 +35,28 @@ void applyGateSingleQubit(
     int* new_idx,
     int* old_idx,
     int n,
-    long long int N,
     long long int idx,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    const long long int lower,
+    const long long int upper
     );
 
 void applyDiffusionOperator(
     Complex* state,
+    const Complex* X_H,
     const Complex* H,
     const Complex* X,
     const Complex* Z,
     int* new_idx,
     int* old_idx,
     int n,
-    long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    const long long int lower,
+    const long long int upper
     );
 
 void saveArrayToCSV(const double *array, int N, const char* filename);

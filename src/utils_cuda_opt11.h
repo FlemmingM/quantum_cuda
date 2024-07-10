@@ -23,7 +23,8 @@ void applyGateAllQubits(
     long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
 void applyGateSingleQubit(
@@ -36,7 +37,8 @@ void applyGateSingleQubit(
     long long int idx,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
 void applyDiffusionOperator(
@@ -51,10 +53,20 @@ void applyDiffusionOperator(
     long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
-    int sharedMemSize
+    int sharedMemSize,
+    int* old_linear_idxs
     );
 
-void saveArrayToCSV(const double *array, long long int N, const char* filename);
+void saveArrayToCSV(const double *array, int N, const char* filename);
+
+__global__ void compute_idx(
+        int qubit,
+        int* new_idx,
+        int* old_idx,
+        const int n,
+        const long long int N,
+        int* old_linear_idxs
+    );
 
 __global__ void contract_tensor(
     Complex* state,
@@ -63,7 +75,8 @@ __global__ void contract_tensor(
     int* new_idx,
     int* old_idx,
     const int n,
-    long long int N
+    long long int N,
+    int* old_linear_idxs
     );
 
 __global__ void zeroOutState(Complex* new_state, long long int N);

@@ -21,6 +21,7 @@ int main(int argc, char* argv[]) {
     long long int N = (long long int)pow(2, n);
     long long int markedState = atoi(argv[2]);
     const int chunk_size = atoi(argv[3]);
+    const int block_size = atoi(argv[4]);
     // const char* fileName = argv[4];
     // int verbose = atoi(argv[5]);
 
@@ -33,18 +34,16 @@ int main(int argc, char* argv[]) {
     // Define the number of groups to do the parallel search with more than 10 qubits
     // while still using the fast shared memory
 
-    int num_groups = pow(2, ((n - 10 < 0) ? 0 : (n - 10)));
+    long long int num_groups = pow(2, ((n - 10 < 0) ? 0 : (n - 10)));
     printf("num_groups: %d\n", num_groups);
     // printf("test: %d\n", log2)
 
-    int num_chunks = num_groups * chunk_size;
+    long long int num_chunks = num_groups * chunk_size;
     int qubits_per_chunk = (int)(n-log2((double)num_chunks));
     printf("num chunks: %d, n per chunk: %d\n",num_chunks, qubits_per_chunk);
 
     // Define the config for threads, devices and streams
     // const int num_chunks = 2;
-
-
 
     int chunks[num_chunks];
     // int sharedMemSizes[num_chunks];
@@ -61,8 +60,13 @@ int main(int argc, char* argv[]) {
         // sharedMemSizes[i] = N / num_chunks * sizeof(Complex);
     }
 
-    int val = 1024;
-    dim3 dimBlock(val);
+    // Define the chunk for the oracle
+    long long int oracle_chunk = markedState / (N / num_chunks);
+    markedState = markedState % (N / num_chunks);
+    long long int recoveredState = oracle_chunk*(N / num_chunks)+markedState;
+    printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
+
+    dim3 dimBlock(block_size);
     dim3 dimGrid((N/num_chunks + dimBlock.x - 1) / dimBlock.x);
 
     // Set the gates:
@@ -83,7 +87,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < num_chunks; ++i) {
          // Init the state
         cudaMallocHost((void **)&state_h[i], chunks[i] * sizeof(Complex));
-        cudaMalloc((void **)&state_d[i], chunks[i] * sizeof(Complex));
+        // cudaMalloc((void **)&state_d[i], chunks[i] * sizeof(Complex));
         // Init the |0>^(xn) state and the new_state
         state_h[i][0] = make_cuDoubleComplex(1.0, 0.0);
         for (int j = 1; j < chunks[i]; ++j) {
@@ -101,65 +105,70 @@ int main(int argc, char* argv[]) {
     cudaStream_t streams[chunk_size];
 
 
-    // Assuming we have t = 1 solution in grover's algorithm
-    // we have k = floor(pi/4 * sqrt(N/num_chunks))
+    // // Assuming we have t = 1 solution in grover's algorithm
+    // // we have k = floor(pi/4 * sqrt(N/num_chunks))
     int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
+    printf("running %d rounds\n", k);
 
 
 
     double time = omp_get_wtime();
 
+    for (int i = 0; i < chunk_size; ++i) {
+        cudaStreamCreate(&streams[i]);
+    }
 
-    int count = 0;
     for (int j = 0; j < num_groups; ++j) {
         #pragma omp parallel for num_threads(chunk_size)
         for (int i = 0; i < chunk_size; ++i) {
-            cudaStreamCreate(&streams[i]);
+            cudaMalloc((void **)&state_d[j*chunk_size+i], chunks[j*chunk_size+i] * sizeof(Complex));
             cudaMemcpyAsync(state_d[j*chunk_size+i], state_h[j*chunk_size+i], chunks[j*chunk_size+i] * sizeof(Complex), cudaMemcpyHostToDevice, streams[i]);
-            contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d[j*chunk_size+i], H_d[0], 0, new_idx_d[j*chunk_size+i], old_idx_d[j*chunk_size+i], qubits_per_chunk, i*chunks[j*chunk_size+i], (i+1)*chunks[j*chunk_size+i]); //(int)(n-log2((double)num_chunks))
+            // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d[j*chunk_size+i], H_d[0], 0, new_idx_d[j*chunk_size+i], old_idx_d[j*chunk_size+i], qubits_per_chunk, i*chunks[j*chunk_size+i], (i+1)*chunks[j*chunk_size+i]); //(int)(n-log2((double)num_chunks))
+
+            // ### Here we run Grover's algorithm
+            applyGateAllQubits(
+                state_d[j*chunk_size+i],
+                H_d[0], new_idx_d[j*chunk_size+i],
+                old_idx_d[j*chunk_size+i], qubits_per_chunk,
+                dimBlock, dimGrid, sharedMemSize, i*chunks[j*chunk_size+i],
+                (i+1)*chunks[j*chunk_size+i]
+            );
+
+            for (int l = 0; l < k; ++l) {
+                if (oracle_chunk == (j*chunk_size+i)) {
+                    applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d[j*chunk_size+i], markedState);
+                }
+
+                applyDiffusionOperator(
+                    state_d[j*chunk_size+i],
+                    X_H_d[0], H_d[0], X_d[0], Z_d[0], new_idx_d[j*chunk_size+i],
+                    old_idx_d[j*chunk_size+i], qubits_per_chunk, dimBlock, dimGrid, sharedMemSize,
+                    i*chunks[j*chunk_size+i], (i+1)*chunks[j*chunk_size+i]
+                );
+        // cudaDeviceSynchronize();
+            }
+
             cudaMemcpyAsync(state_h[j*chunk_size+i], state_d[j*chunk_size+i], chunks[j*chunk_size+i] * sizeof(Complex), cudaMemcpyDeviceToHost, streams[i]);
             cudaStreamSynchronize(streams[i]);
-            cudaStreamDestroy(streams[i]);
-
-            count += 1;
+            cudaFree(state_d[j*chunk_size+i]);
+            // cudaFreeHost(state_h[j*chunk_size+i]);
         }
     }
 
+    for (int i = 0; i < chunk_size; ++i) {
+        cudaStreamDestroy(streams[i]);
+    }
 
-
-    // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_idx_d, old_idx_d, n, N);
-    // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
-
-        // contract_tensor_baseline<<<dimGrid, dimBlock>>>(state, gate, i, new_state, shape, n, N);
-        // cudaDeviceSynchronize();
-        // Update the state with the new state
-    // updateState<<<gridSize, blockSize>>>(state_d, new_state_d, N);
-
-
-
-
-
-    // Now apply the H gate n times, once for each qubit
-    // applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
-
-
-    // for (int i = 0; i < k; ++i) {
-    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-    //     applyDiffusionOperator(state_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
-    //     // cudaDeviceSynchronize();
-    // }
-
-    // cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
 
 
     // cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < num_chunks; ++i) {
-        printf("chunk id: %d ######################################\n", i);
-        printState(state_h[i], chunks[i], "Initial state");
-    }
+    // for (int i = 0; i < num_chunks; ++i) {
+    //     printf("chunk id: %d ######################################\n", i);
+    //     printState(state_h[i], chunks[i], "Initial state");
+    // }
 
 
 
@@ -174,14 +183,8 @@ int main(int argc, char* argv[]) {
     }
 
 
-    // free(H_h);
-    // free(I_h);
-    // free(Z_h);
-    // free(X_h);
-    // free(X_H_h);
-
     for (int i = 0; i < num_chunks; ++i) {
-        cudaFree(state_d[i]);
+        // cudaFree(state_d[i]);
         cudaFreeHost(state_h[i]);
         cudaFree(new_idx_d[i]);
         cudaFree(old_idx_d[i]);

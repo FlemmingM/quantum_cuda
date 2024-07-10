@@ -44,13 +44,33 @@ module load gcc/13.1.0-binutils-2.40
 - relate memory access to the algorithm and the "jumps" performed with the indices
 
 # ideas
+- with more than 11 qubits we reach the bottleneck for the shared memory.
+Solution: divide and conquer! we run a parallel search and split the array in several chunks and run the different kernels in parallel on 1 or 2 GPUs
+
+- next find the optimal number of streams per device which splits the search space and time the computation
+--> design the experiments accordingly and use the shared memory as much as you can.
+- then overlap the loading with async copy
+- Only copy the search space with the solutions back to the host!!!
+--> use simple binary search algo to find the correct solution!
+--> unit test!
+
+- now we can also make the copy and compute overlap!!!
+
+- make a version for many qubits which checks if there is an answer in the chunk and copies this index to a solution array, else delete that chunk --> like this we will not run out of memory for many qubits.
+
+- do profiling of which code lines take most time
+
+- run code for different block sizes, chunk sizes, num devices....
+
+
+
 - write version of v4 where 2 consecutive threads are accessed
-- make shape a shared variable too?
+- make shape a shared variable too? - no just set to 2
 - async copy when idxs are pre-computed
-- compute the idxs on 2 gpus
+- compute the idxs on 2 gpus - memory overhead!
 - change strided reads/writes to coalesced ones
 - define number of blocks as arg
-- pre-compute combined gates in the correct order and remove some of the steps in the loop
+- pre-compute combined gates in the correct order and remove some of the steps in the loop - done merged 2 gates!
 - compute all old and new indecis up front and use them as shared arrays for the computations
 - try to parallelise the diffusion operator as well
 - make animation about how Grover's works --> barchart fx or circle
@@ -74,4 +94,5 @@ module load gcc/13.1.0-binutils-2.40
 
 # How the indices look like for the old_linear_idx for n = 3
 
-0 1 2 3 0 1 2 3 | 4 5 6 7 4 5 6 7 | 0 1 0 1 4 5 4 5 2 3 2 3 6 7 6 7 0 0 2 2 4 4 6 6 1 1 3 3 5 5 7 7
+0 1 2 3 0 1 2 3 | 4 5 6 7 4 5 6 7 || 0 1 0 1 4 5 4 5 | 2 3 2 3 6 7 6 7 ||
+0 0 2 2 4 4 6 6 | 1 1 3 3 5 5 7 7

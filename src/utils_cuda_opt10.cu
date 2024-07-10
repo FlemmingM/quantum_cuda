@@ -43,11 +43,7 @@ __device__ void AddComplex(cuDoubleComplex* a, cuDoubleComplex b){
 __global__ void zeroOutState(Complex* new_state, long long int N) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < N) {
-        if(idx == 0) {
-            new_state[idx] = make_cuDoubleComplex(1.0, 0.0);
-        } else {
-            new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
-        }
+        new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
     }
 }
 
@@ -64,12 +60,16 @@ __global__ void contract_tensor(
         Complex* state,
         const Complex* gate,
         int qubit,
-        int* new_idx,
-        int* old_idx,
         const int n,
         const long long int N
     ) {
-    extern __shared__ Complex shared_mem[]; // Use shared memory
+    // make it flexible with char
+    extern __shared__ char sharedMem[]; // Use shared memory
+
+    Complex* shared_mem = (Complex*)sharedMem;                     // First array of int type
+    int* new_idx = (int*)&sharedMem[blockDim.x*gridDim.x*n];
+    int* old_idx = (int*)&sharedMem[2*blockDim.x*gridDim.x*n];
+
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = idx * n;
 
@@ -118,8 +118,6 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx) {
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
-    int* new_idx,
-    int* old_idx,
     int n,
     long long int N,
     dim3 dimBlock,
@@ -128,15 +126,13 @@ void applyGateAllQubits(
     ) {
 
     for (int i = 0; i < n; ++i) {
-        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_idx, old_idx, n, N);
+        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, n, N);
     }
 }
 
 void applyGateSingleQubit(
     Complex* state,
     const Complex* gate,
-    int* new_idx,
-    int* old_idx,
     int n,
     long long int N,
     long long int idx,
@@ -145,7 +141,7 @@ void applyGateSingleQubit(
     int sharedMemSize
     ) {
 
-    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_idx, old_idx, n, N);
+    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, n, N);
 }
 
 void applyDiffusionOperator(
@@ -154,75 +150,73 @@ void applyDiffusionOperator(
     const Complex* H,
     const Complex* X,
     const Complex* Z,
-    int* new_idx,
-    int* old_idx,
     int n,
     long long int N,
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize
     ) {
-    applyGateAllQubits(state, X_H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, X_H, n, N, dimBlock, dimGrid, sharedMemSize);
     // applyGateAllQubits(state, X, shape, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
     applyPhaseFlip<<<dimGrid, dimBlock>>>(state, N - 1);
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
-    applyGateAllQubits(state, X, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
-    applyGateAllQubits(state, H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateSingleQubit(state, Z, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, X, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateSingleQubit(state, Z, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, H, n, N, dimBlock, dimGrid, sharedMemSize);
 }
 
-double* simulate(const Complex* weights, long long int numElements, int numSamples) {
-    if (numElements <= 0 || numSamples <= 0) {
-        fprintf(stderr, "Invalid input parameters.\n");
-        return NULL;
-    }
+// double* simulate(const Complex* weights, int numElements, int numSamples) {
+//     if (numElements <= 0 || numSamples <= 0) {
+//         fprintf(stderr, "Invalid input parameters.\n");
+//         return NULL;
+//     }
 
-    // Array to count occurrences of each index
-    int* counts = (int*)calloc(numElements, sizeof(int));
-    // Array to store the average frequencies
-    double* averages = (double*)calloc(numElements, sizeof(double));
+//     // Array to count occurrences of each index
+//     int* counts = (int*)calloc(numElements, sizeof(int));
+//     // Array to store the average frequencies
+//     double* averages = (double*)calloc(numElements, sizeof(double));
 
-    if (counts == NULL || averages == NULL) {
-        fprintf(stderr, "Memory allocation failed.\n");
-        free(counts);
-        free(averages);
-        return NULL;
-    }
+//     if (counts == NULL || averages == NULL) {
+//         fprintf(stderr, "Memory allocation failed.\n");
+//         free(counts);
+//         free(averages);
+//         return NULL;
+//     }
 
-    // Prepare weights for the distribution by extracting their magnitudes
-    double* magnitudes = (double*)malloc(numElements * sizeof(double));
-    if (magnitudes == NULL) {
-        fprintf(stderr, "Memory allocation failed.\n");
-        free(counts);
-        free(averages);
-        return NULL;
-    }
+//     // Prepare weights for the distribution by extracting their magnitudes
+//     double* magnitudes = (double*)malloc(numElements * sizeof(double));
+//     if (magnitudes == NULL) {
+//         fprintf(stderr, "Memory allocation failed.\n");
+//         free(counts);
+//         free(averages);
+//         return NULL;
+//     }
 
-    for (int i = 0; i < numElements; ++i) {
-        magnitudes[i] = cuCabs(weights[i]);
-    }
+//     for (int i = 0; i < numElements; ++i) {
+//         magnitudes[i] = cabs(weights[i]);
+//     }
 
-    // Simulate the weighted distribution
-    for (int i = 0; i < numSamples; ++i) {
-        double r = (double)rand() / RAND_MAX;
-        double cum_prob = 0.0;
-        for (int j = 0; j < numElements; ++j) {
-            cum_prob += magnitudes[j];
-            if (r < cum_prob) {
-                counts[j]++;
-                break;
-            }
-        }
-    }
+//     // Simulate the weighted distribution
+//     for (int i = 0; i < numSamples; ++i) {
+//         double r = (double)rand() / RAND_MAX;
+//         double cum_prob = 0.0;
+//         for (int j = 0; j < numElements; ++j) {
+//             cum_prob += magnitudes[j];
+//             if (r < cum_prob) {
+//                 counts[j]++;
+//                 break;
+//             }
+//         }
+//     }
 
-    for (int i = 0; i < numElements; ++i) {
-        averages[i] = (double)counts[i] / numSamples;
-    }
+//     for (int i = 0; i < numElements; ++i) {
+//         averages[i] = (double)counts[i] / numSamples;
+//     }
 
-    free(counts);
-    free(magnitudes);
-    return averages;
-}
+//     free(counts);
+//     free(magnitudes);
+//     return averages;
+// }
 
 // Complex** createMatrix(int numRows, int numCols, const Complex* initialValues) {
 //     if (numRows <= 0 || numCols <= 0) {

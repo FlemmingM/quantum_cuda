@@ -65,38 +65,20 @@ int main(int argc, char* argv[]) {
     Complex *Z_d;
     Complex *X_d;
 
-    int *shape_h;
-    int *shape_d;
     int *new_idx_d;
     int *old_idx_d;
-
-    // Malloc on device and host
-
-    // Init the temp new state for the results
-    // cudaMallocHost((void **)&new_state_h, N * sizeof(Complex));
-    // cudaMalloc((void **)&new_state_d, N * sizeof(Complex));
-    // for (int i = 0; i < N; ++i) {
-    //     new_state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    // }
-    // cudaMemcpy(new_state_d, new_state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
-
-    // We don't need it in on the host
-    // cudaFreeHost(new_state_h);
-
 
 
     // Init the state
     cudaMallocHost((void **)&state_h, N * sizeof(Complex));
     cudaMalloc((void **)&state_d, N * sizeof(Complex));
     // Init the |0>^(xn) state and the new_state
-    state_h[0] = make_cuDoubleComplex(1.0, 0.0);
-    for (int i = 1; i < N; ++i) {
-        state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-    }
-    cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
+    // state_h[0] = make_cuDoubleComplex(1.0, 0.0);
+    // for (int i = 1; i < N; ++i) {
+    //     state_h[i] = make_cuDoubleComplex(0.0, 0.0);
+    // }
+    // cudaMemcpy(state_d, state_h, N * sizeof(Complex), cudaMemcpyHostToDevice);
 
-    cudaMallocHost((void **)&shape_h, n * sizeof(int));
-    cudaMalloc((void **)&shape_d, n * sizeof(int));
 
     // Malloc the gate on device
     cudaMalloc((void **)&H_d, 4 * sizeof(Complex));
@@ -107,20 +89,7 @@ int main(int argc, char* argv[]) {
 
 
 
-
-    // Init the shape depending on the number of qubits
-    // each qubit is a column vector of size 2
-    // e.g. |0> = [1, 0]
-    // Thus, for n=3 qubits (N=8) the tensor will have a shape of 2,2,2
-    for (int i = 0; i < n; ++i) {
-        shape_h[i] = 2;
-    }
-
-
-
-
     // Copy from host to device
-    cudaMemcpy(shape_d, shape_h, n * sizeof(int), cudaMemcpyHostToDevice);
 
     cudaMemcpy(H_d, H_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
     cudaMemcpy(X_H_d, X_H_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
@@ -128,11 +97,11 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(Z_d, Z_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
     cudaMemcpy(X_d, X_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
 
-
-    dim3 dimBlock(256);
+    int val = 256;
+    dim3 dimBlock(val);
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
 
-    const int blockSize = 256;
+    const int blockSize = val;
     const int gridSize = (N + blockSize - 1) / blockSize;
 
     // Allocate shared memory for reduction
@@ -149,9 +118,11 @@ int main(int argc, char* argv[]) {
     int k = (int)floor(M_PI / 4 * sqrt(N));
 
 
+    // https://forums.developer.nvidia.com/t/question-about-max-shared-memory-in-block-and-multiprocessor/283345
 
+    cudaFuncSetAttribute(contract_tensor, cudaFuncAttributeMaxDynamicSharedMemorySize, sharedMemSize);
     double time = omp_get_wtime();
-
+    zeroOutState<<<gridSize, blockSize>>>(state_d, N);
 
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, shape_d, new_idx_d, old_idx_d, n, N);
     // contract_tensor<<<gridSize, blockSize>>>(state_d, H_d, 0, new_state_d, shape_d, new_idx_d, old_idx_d, n, N);
@@ -166,7 +137,7 @@ int main(int argc, char* argv[]) {
 
 
     // Now apply the H gate n times, once for each qubit
-    applyGateAllQubits(state_d, H_d, shape_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
 
     // cudaDeviceSynchronize();
 
@@ -176,11 +147,11 @@ int main(int argc, char* argv[]) {
     //     printf("Running %d round(s)\n", k);
     // }
 
-    for (int i = 0; i < k; ++i) {
-        applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-        applyDiffusionOperator(state_d, shape_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
-        // cudaDeviceSynchronize();
-    }
+    // for (int i = 0; i < k; ++i) {
+    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+    //     applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize);
+    //     // cudaDeviceSynchronize();
+    // }
 
     cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
@@ -190,7 +161,7 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
     // if (verbose == 1) {
-    // printState(state_h, N, "Initial state");
+    printState(state_h, N, "Initial state");
     // }
 
     // // Apply Grover's algorithm k iteration and then sample
@@ -230,14 +201,12 @@ int main(int argc, char* argv[]) {
 
 
     // // save the data
-    // saveArrayToCSV(averages, N, 'test.csv');
+    // saveArrayToCSV(averages, N, fileName);
 
     cudaFree(state_d);
-    cudaFree(shape_d);
     cudaFree(H_d);
 
     cudaFreeHost(state_h);
-    cudaFreeHost(shape_h);
     cudaFreeHost(H_h);
     cudaFreeHost(I_h);
     cudaFreeHost(Z_h);

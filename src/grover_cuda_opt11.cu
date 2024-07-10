@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <omp.h>
-#include "utils_cuda_opt9.h"
+#include "utils_cuda_opt11.h"
 
 typedef cuDoubleComplex Complex;
 
@@ -97,12 +97,11 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(Z_d, Z_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
     cudaMemcpy(X_d, X_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
 
-    // int val = 1024;
     dim3 dimBlock(block_size);
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
 
-    const int blockSize = block_size;
-    const int gridSize = (N + blockSize - 1) / blockSize;
+    // const int blockSize = val;
+    // const int gridSize = (N + blockSize - 1) / blockSize;
 
     // Allocate shared memory for reduction
     // int sharedMemSize = blockSize * sizeof(Complex);
@@ -110,8 +109,8 @@ int main(int argc, char* argv[]) {
     int sharedMemSize2 = 2*N * sizeof(int);
 
     // Malloc the indices on the device
-    cudaMalloc(&new_idx_d, gridSize * blockSize * n * sizeof(int));
-    cudaMalloc(&old_idx_d, gridSize * blockSize * n * sizeof(int));
+    cudaMalloc(&new_idx_d, dimGrid.x * dimBlock.x * n * sizeof(int));
+    cudaMalloc(&old_idx_d, dimGrid.x * dimBlock.x * n * sizeof(int));
 
     // cudaMallocHost(&old_linear_idxs_h, 2 * N * n * sizeof(int));
     cudaMalloc(&old_linear_idxs_d, 2 * N * n * sizeof(int));
@@ -126,10 +125,10 @@ int main(int argc, char* argv[]) {
 
     double time = omp_get_wtime();
 
-    zeroOutState<<<gridSize, blockSize>>>(state_d, N);
+    zeroOutState<<<dimGrid, dimBlock>>>(state_d, N);
 
     for (int i = 0; i < n; ++i) {
-        compute_idx<<<gridSize, blockSize, sharedMemSize2>>>(i, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+        compute_idx<<<dimGrid, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     }
     // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
 
