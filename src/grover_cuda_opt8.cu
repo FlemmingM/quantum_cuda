@@ -164,20 +164,18 @@ int main(int argc, char* argv[]) {
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 2, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
 
     // Now apply the H gate n times, once for each qubit
-    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
-    for (int i = 0; i < k; ++i) {
-        applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-        applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
-        // cudaDeviceSynchronize();
-    }
-
-    // applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
-    // // // Apply Grover's algorithm k iteration and then sample
+    // applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
     // for (int i = 0; i < k; ++i) {
     //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-    //     applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
-    //     // cudaDeviceSynchronize();
+    //     applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
     // }
+
+    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    // Apply Grover's algorithm k iteration and then sample
+    for (int i = 0; i < k; ++i) {
+        applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+        applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    }
 
     cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
@@ -186,7 +184,7 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
-    // printState(state_h, N, "Initial state");
+    printState(state_h, N, "Initial state");
 
 
 
