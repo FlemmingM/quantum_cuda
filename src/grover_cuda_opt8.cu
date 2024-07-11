@@ -126,11 +126,6 @@ int main(int argc, char* argv[]) {
     cudaMalloc(&shared_idxs_d, warp_size * 2 * N * sizeof(int));
     cudaMallocHost(&shared_idxs_h, warp_size * 2 * N * sizeof(int));
 
-    // init share idxs to 0
-    // for (int i = 0; i < (warp_size * 2 * N); ++i) {
-    //     shared_idxs_h[i] = 0;
-    // }
-
     // Assuming we have t = 1 solution in grover's algorithm
     // we have k = floor(pi/4 * sqrt(N))
     int k = (int)floor(M_PI / 4 * sqrt(N));
@@ -149,31 +144,40 @@ int main(int argc, char* argv[]) {
 
 
     cudaDeviceSynchronize();
-    cudaMemcpy(shared_idxs_h, shared_idxs_d, warp_size*2*N*sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(shared_idxs_h, shared_idxs_d, warp_size*2*N*sizeof(int), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
 
 
-    for (int i = 0; i < (2*N*n); ++i) {
-        printf("%d ", old_linear_idxs_h[i]);
-    }
+    // for (int i = 0; i < (2*N*n); ++i) {
+    //     printf("%d ", old_linear_idxs_h[i]);
+    // }
 
-    printf("###\n");
-    for (int i = 0; i < (warp_size*2*N); ++i) {
-        printf("%d ", shared_idxs_h[i]);
-    }
-    // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+    // printf("###\n");
+    // for (int i = 0; i < (warp_size*2*N); ++i) {
+    //     printf("%d ", shared_idxs_h[i]);
+    // }
+    // contract_tensor<<<(N*2 + blockSize - 1) / blockSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<(N*2 + blockSize - 1) / blockSize, blockSize, sharedMemSize>>>(state_d, H_d, 1, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<(N*2 + blockSize - 1) / blockSize, blockSize, sharedMemSize>>>(state_d, H_d, 2, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
+
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 1, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 2, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
 
     // Now apply the H gate n times, once for each qubit
-    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
-
-    // Apply Grover's algorithm k iteration and then sample
+    applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
     for (int i = 0; i < k; ++i) {
         applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
-        applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+        applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, (N*2 + blockSize - 1) / blockSize, sharedMemSize, old_linear_idxs_d);
         // cudaDeviceSynchronize();
     }
+
+    // applyGateAllQubits(state_d, H_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    // // // Apply Grover's algorithm k iteration and then sample
+    // for (int i = 0; i < k; ++i) {
+    //     applyPhaseFlip<<<dimGrid, dimBlock>>>(state_d, markedState);
+    //     applyDiffusionOperator(state_d, X_H_d, H_d, X_d, Z_d, new_idx_d, old_idx_d, n, N, dimBlock, dimGrid, sharedMemSize, old_linear_idxs_d);
+    //     // cudaDeviceSynchronize();
+    // }
 
     cudaDeviceSynchronize();
     double elapsed = omp_get_wtime() - time;
@@ -182,7 +186,7 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
-    printState(state_h, N, "Initial state");
+    // printState(state_h, N, "Initial state");
 
 
 
@@ -196,11 +200,6 @@ int main(int argc, char* argv[]) {
     cudaFree(old_linear_idxs_d);
 
     cudaFreeHost(state_h);
-    // cudaFreeHost(H_h);
-    // cudaFreeHost(I_h);
-    // cudaFreeHost(Z_h);
-    // cudaFreeHost(X_h);
-    // cudaFreeHost(X_H_h);
     cudaFreeHost(shared_idxs_h);
     cudaFreeHost(old_linear_idxs_h);
 

@@ -153,7 +153,6 @@ __global__ void compute_idx(
             old_idx[offset + qubit] = j;
 
             // Compute the linear index for old_idx
-            int old_linear_idx = 0;
             int factor = 1;
             for (int i = n - 1; i >= 0; --i) {
                 // old_linear_idx += old_idx[offset + i] * factor;
@@ -207,7 +206,6 @@ __global__ void warp_sum_reduction(const int* input, int* output, int N, int war
     }
 }
 
-
 __global__ void contract_tensor(
         Complex* state,
         const Complex* gate,
@@ -220,20 +218,64 @@ __global__ void contract_tensor(
     ) {
     extern __shared__ Complex shared_mem[]; // Use shared memory
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int lane = idx % 2; // Get the lane index within the warp
+    int warp_id = idx / 2; // Get the warp ID
     int offset = idx * n;
-    int offset2 = qubit*2*N;
 
-    if (idx < N) {
+    if (idx < (2*N)) {
         // Compute the two values for j = 0 and j = 1 and store in shared memory
-        for (int j = 0; j < 2; ++j) {
-            // Store the result in shared memory
-            shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[2*idx + j + qubit*2*N]]);
+        // for (int j = 0; j < 2; ++j) {
+        //     // Store the result in shared memory
+        //     shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[2*idx + j + qubit*2*N]]);
+        // }
+        if (lane == 0){
+            shared_mem[idx] = cuCmul(gate[new_idx[offset + qubit] * 2], state[old_linear_idxs[idx + qubit*2*N]]);
+        } else {
+            shared_mem[idx] = cuCmul(gate[new_idx[offset + qubit] * 2 + 1], state[old_linear_idxs[idx + qubit*2*N]]);
         }
         __syncthreads();
 
-        state[idx] = cuCadd(shared_mem[2*idx + 1], shared_mem[2*idx]);
+        // state[idx] = cuCadd(shared_mem[2*idx + 1], shared_mem[2*idx]);
+        Complex val = shared_mem[idx];
+        // printf("idx %d, lane: %d\n", idx, lane);
+        // printf("idx %d, val: %f\n", idx, cuCreal(val));
+        val.x += __shfl_down_sync(0xffffffff, val.x, 1, 2);
+        val.y += __shfl_down_sync(0xffffffff, val.y, 1, 2);
+
+        // printf("idx %d, val: %f\n", idx, cuCreal(val));
+        if (lane == 0) {
+                state[warp_id] = val;
+        }
     }
+
 }
+
+
+
+// __global__ void contract_tensor(
+//         Complex* state,
+//         const Complex* gate,
+//         int qubit,
+//         int* new_idx,
+//         int* old_idx,
+//         const int n,
+//         const long long int N,
+//         int* old_linear_idxs
+//     ) {
+//     extern __shared__ Complex shared_mem[]; // Use shared memory
+//     int idx = blockDim.x * blockIdx.x + threadIdx.x;
+//     int offset = idx * n;
+
+//     if (idx < N) {
+//         // Compute the two values for j = 0 and j = 1 and store in shared memory
+//         for (int j = 0; j < 2; ++j) {
+//             // Store the result in shared memory
+//             shared_mem[2*idx + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idxs[2*idx + j + qubit*2*N]]);
+//         }
+//         __syncthreads();
+//         state[idx] = cuCadd(shared_mem[2*idx + 1], shared_mem[2*idx]);
+//     }
+// }
 
 
 __global__ void applyPhaseFlip(Complex* state, long long int idx) {
