@@ -160,7 +160,8 @@ __global__ void compute_idx(
 
                 // TODO: make shared_mem
                 // printf("idx: %d, j: %d, old_idx[offset + i] * factor: %d, offset: %d\n", idx, j, old_idx[offset + i] * factor, idx*2*warp_size + i + j*warp_size + offset2);
-                shared_idxs[idx*2*warp_size + i + j*warp_size + offset2] = old_idx[offset + i] * factor;
+                // shared_idxs[idx*2*warp_size + i + j*warp_size + offset2] = old_idx[offset + i] * factor;
+                shared_idxs[idx*2*warp_size + i + j*warp_size] = old_idx[offset + i] * factor;
                 factor *= 2;
             }
             // old_linear_idxs[idx + j*N] = old_linear_idx;

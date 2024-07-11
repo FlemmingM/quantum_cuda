@@ -108,6 +108,14 @@ int main(int argc, char* argv[]) {
     int sharedMemSize = 2*N * sizeof(Complex);
     // int sharedMemSize2 = 32 * 2 * N * sizeof(int);
 
+        // Check if the requested shared memory size exceeds the limit
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, 0);
+    if (sharedMemSize > deviceProp.sharedMemPerBlock) {
+        printf("Requested shared memory size (%d bytes) exceeds the device limit (%d bytes).\n", sharedMemSize, deviceProp.sharedMemPerBlock);
+        return -1;
+    }
+
     // Malloc the indices on the device
     cudaMalloc(&new_idx_d, gridSize * blockSize * n * sizeof(int));
     cudaMalloc(&old_idx_d, gridSize * blockSize * n * sizeof(int));
@@ -115,37 +123,44 @@ int main(int argc, char* argv[]) {
     cudaMallocHost(&old_linear_idxs_h, 2 * N * n * sizeof(int));
     cudaMalloc(&old_linear_idxs_d, 2 * N * n * sizeof(int));
 
-    cudaMalloc(&shared_idxs_d, warp_size * 2 * N * n* sizeof(int));
-    cudaMallocHost(&shared_idxs_h, warp_size * 2 * N * n* sizeof(int));
+    cudaMalloc(&shared_idxs_d, warp_size * 2 * N * sizeof(int));
+    cudaMallocHost(&shared_idxs_h, warp_size * 2 * N * sizeof(int));
+
+    // init share idxs to 0
+    // for (int i = 0; i < (warp_size * 2 * N); ++i) {
+    //     shared_idxs_h[i] = 0;
+    // }
 
     // Assuming we have t = 1 solution in grover's algorithm
     // we have k = floor(pi/4 * sqrt(N))
     int k = (int)floor(M_PI / 4 * sqrt(N));
 
-    zeroOutState<<<gridSize, blockSize>>>(shared_idxs_h, warp_size * 2 * N * n);
+    zeroOutState<<<gridSize, blockSize>>>(shared_idxs_h, warp_size * 2 * N);
 
 
-    cudaMemcpy(shared_idxs_d, shared_idxs_h, warp_size * 2 * N * n*  sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(shared_idxs_d, shared_idxs_h, warp_size*2*N*sizeof(int), cudaMemcpyHostToDevice);
     double time = omp_get_wtime();
 
     for (int i = 0; i < n; ++i) {
+        zeroOutState<<<gridSize, blockSize>>>(shared_idxs_d, warp_size * 2 * N);
         compute_idx<<<gridSize, blockSize>>>(i, new_idx_d, old_idx_d, n, N, shared_idxs_d, warp_size);
+        warp_sum_reduction<<<(N*2*warp_size + blockSize - 1) / blockSize, blockSize>>>(shared_idxs_d, old_linear_idxs_d + 2*i*N, warp_size * 2 * N, warp_size);
     }
 
-    warp_sum_reduction<<<gridSize, blockSize>>>(shared_idxs_d, old_linear_idxs_d, warp_size * 2 * N * n, warp_size);
+
     cudaDeviceSynchronize();
-    // cudaMemcpy(shared_idxs_h, shared_idxs_d, warp_size * 2 * N * n*  sizeof(int), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(shared_idxs_h, shared_idxs_d, warp_size*2*N*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N* n * sizeof(int), cudaMemcpyDeviceToHost);
 
 
-    // for (int i = 0; i < (2*N*n); ++i) {
-    //     printf("%d ", old_linear_idxs_h[i]);
-    // }
+    for (int i = 0; i < (2*N*n); ++i) {
+        printf("%d ", old_linear_idxs_h[i]);
+    }
 
-    // printf("###\n");
-    // for (int i = 0; i < (warp_size*2*N*n); ++i) {
-    //     printf("%d ", shared_idxs_h[i]);
-    // }
+    printf("###\n");
+    for (int i = 0; i < (warp_size*2*N); ++i) {
+        printf("%d ", shared_idxs_h[i]);
+    }
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 0, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 1, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
     // contract_tensor<<<gridSize, blockSize, sharedMemSize>>>(state_d, H_d, 2, new_idx_d, old_idx_d, n, N, old_linear_idxs_d);
@@ -167,48 +182,9 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
-    // if (verbose == 1) {
-    // printState(state_h, N, "Initial state");
-    // }
-
-    // // Apply Grover's algorithm k iteration and then sample
-    // if (verbose == 1) {
-    //     printf("Running %d round(s)\n", k);
-    // }
-
-    // double time = omp_get_wtime();
-
-    // for (int i = 0; i < k; ++i) {
-    //     if (verbose == 1) {
-    //         printf("%d/%d\n", i, k);
-    //     }
-    //     // Apply Oracle
-    //     applyPhaseFlip(state, markedState);
-    //     if (verbose == 1) {
-    //         printState(state, N, "Oracle applied");
-    //     }
-    //     // Apply the diffusion operator
-    //     applyDiffusionOperator(state, new_state, shape, H, X, Z, n, N);
-    //     if (verbose == 1) {
-    //         printState(state, N, "After Diffusion");
-    //     }
-    // }
-
-    // double elapsed = omp_get_wtime() - time;
-    // printf("Time: %f \n", elapsed);
-
-    // // Sample the states wheighted by their amplitudes
-    // double* averages = simulate(state_h, N, 1);
-    // if (verbose == 1) {
-    //     printf("Average frequency per position:\n");
-    //     for (int i = 0; i < N; ++i) {
-    //         printf("Position %d: %f\n", i, averages[i]);
-    //     }
-    // }
+    printState(state_h, N, "Initial state");
 
 
-    // // save the data
-    // saveArrayToCSV(averages, N, 'test.csv');
 
     cudaFree(state_d);
     cudaFree(H_d);
@@ -220,11 +196,11 @@ int main(int argc, char* argv[]) {
     cudaFree(old_linear_idxs_d);
 
     cudaFreeHost(state_h);
-    cudaFreeHost(H_h);
-    cudaFreeHost(I_h);
-    cudaFreeHost(Z_h);
-    cudaFreeHost(X_h);
-    cudaFreeHost(X_H_h);
+    // cudaFreeHost(H_h);
+    // cudaFreeHost(I_h);
+    // cudaFreeHost(Z_h);
+    // cudaFreeHost(X_h);
+    // cudaFreeHost(X_H_h);
     cudaFreeHost(shared_idxs_h);
     cudaFreeHost(old_linear_idxs_h);
 
