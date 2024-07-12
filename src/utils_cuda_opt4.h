@@ -26,7 +26,8 @@ void applyGateAllQubits(
     dim3 dimGrid,
     int sharedMemSize,
     const long long int lower,
-    const long long int upper
+    const long long int upper,
+    cudaStream_t stream
     );
 
 void applyGateSingleQubit(
@@ -40,7 +41,8 @@ void applyGateSingleQubit(
     dim3 dimGrid,
     int sharedMemSize,
     const long long int lower,
-    const long long int upper
+    const long long int upper,
+    cudaStream_t stream
     );
 
 void applyDiffusionOperator(
@@ -56,7 +58,8 @@ void applyDiffusionOperator(
     dim3 dimGrid,
     int sharedMemSize,
     const long long int lower,
-    const long long int upper
+    const long long int upper,
+    cudaStream_t stream
     );
 
 void saveArrayToCSV(const double *array, int N, const char* filename);
@@ -70,7 +73,7 @@ __global__ void contract_tensor(
     const int n,
     const long long int lower,
     const long long int upper
-    );
+);
 
 __global__ void zeroOutState(Complex* new_state, long long int N);
 
