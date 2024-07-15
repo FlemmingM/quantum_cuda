@@ -92,11 +92,64 @@ __global__ void zeroOutState(Complex* new_state, long long int N) {
     }
 }
 
+__global__ void initState(Complex* new_state, int N) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx < N) {
+        if (idx==0) {
+            new_state[idx] = make_cuDoubleComplex(1.0, 0.0);
+        } else {
+            new_state[idx] = make_cuDoubleComplex(0.0, 0.0);
+        }
+
+    }
+}
+
 
 __global__ void updateState(Complex* state, Complex* new_state, long long int N) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < N) {
         state[idx] = new_state[idx];
+    }
+}
+
+
+__global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_maxValue, int size, int chunk_id, int* chunk_ids) {
+    __shared__ Complex sharedArray[1024];
+    __shared__ int sharedIndex[1024];
+
+    int tid = threadIdx.x;
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index < size) {
+        sharedArray[tid] = d_array[index];
+        sharedIndex[tid] = index;
+    } else {
+        sharedArray[tid] = make_cuDoubleComplex(-99.0, 0.00);  // Set to minimum value if out of bounds
+        sharedIndex[tid] = -1;        // Invalid index
+    }
+
+    __syncthreads();
+
+    // Perform reduction to find the max value and its index
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride && index + stride < size) {
+            if (cuCreal(sharedArray[tid]) < cuCreal(sharedArray[tid + stride])) {
+                sharedArray[tid] = sharedArray[tid + stride];
+                sharedIndex[tid] = sharedIndex[tid + stride];
+            }
+        }
+        __syncthreads();
+    }
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        // printf("Val: %f, Index: %d, chunk_id: %d\n", cuCreal(sharedArray[0]), sharedIndex[0], chunk_id);
+        // printf("Index: %d\n", sharedIndex[0]);
+        // printf("chunk_id: %d\n", chunk_id);
+        *d_maxIndex = sharedIndex[0];
+        *d_maxValue = cuCreal(sharedArray[0]);
+        *chunk_ids = chunk_id;
+
     }
 }
 

@@ -16,6 +16,7 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx);
 
 void allocateGatesDevice(const int num_devices, Complex **H_d, Complex **I_d, Complex **Z_d, Complex **X_d, Complex **X_H_d);
 
+__global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_maxValue, int size, int chunk_id, int* chunk_ids);
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
@@ -76,6 +77,7 @@ __global__ void contract_tensor(
 );
 
 __global__ void zeroOutState(Complex* new_state, long long int N);
+__global__ void initState(Complex* new_state, int N);
 
 void printState(const Complex* state, long long int N, const char* message);
 
