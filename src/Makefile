@@ -1,8 +1,8 @@
 TARGET_STREAM = grover_cuda_stream
-
+TARGET_STREAM_2_GPU = grover_cuda_stream_2_gpu
 
 OBJS_STREAM = grover_cuda_stream.o utils_cuda.o utils_cuda_stream.o
-
+OBJS_STREAM_2_GPU = grover_cuda_stream_2_gpu.o utils_cuda.o utils_cuda_stream_2_gpu.o
 
 
 
@@ -34,11 +34,12 @@ INCLUDES = -I$(CUDA_PATH)/include -I$(CUDA_PATH)/samples/Common
 # all:  $(TARGET_CUDA8) $(TARGET_CUDA10) $(TARGET_CUDA11) $(TARGET_CUDA12)
 # all: $(TARGET_CUDA2) $(TARGET_CUDA3) $(TARGET_CUDA4) $(TARGET_CUDA9)
 # all: $(TARGET_CUDA13) $(TARGET_CUDA5) $(TARGET_CUDA9)
-all: $(TARGET_STREAM)
+all: $(TARGET_STREAM) $(TARGET_STREAM_2_GPU)
 
 $(TARGET_STREAM): $(OBJS_STREAM)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS_STREAM) -lm
-
+$(TARGET_STREAM_2_GPU): $(OBJS_STREAM_2_GPU)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS_STREAM_2_GPU) -lm
 
 
 
@@ -54,9 +55,12 @@ clean:
 
 realclean: clean
 	@rm -f $(TARGET_STREAM)
+	@rm -f $(TARGET_STREAM_2_GPU)
 
 
 # dependencies
 grover_cuda_stream.o: grover_cuda_stream.cu utils_cuda.h utils_cuda_stream.h
 utils_cuda_stream.o: utils_cuda_stream.cu utils_cuda_stream.h
+grover_cuda_stream2.o: grover_cuda_stream2.cu utils_cuda.h utils_cuda_stream_2_gpu.h
+utils_cuda_stream_2_gpu.o: utils_cuda_stream.cu utils_cuda_stream_2_gpu.h
 utils_cuda.o: utils_cuda.cu utils_cuda.h

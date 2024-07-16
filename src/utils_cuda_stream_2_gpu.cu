@@ -89,9 +89,9 @@ __global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_
         // printf("Val: %f, Index: %d, chunk_id: %d\n", cuCreal(sharedArray[0]), sharedIndex[0], chunk_id);
         // printf("Index: %d\n", sharedIndex[0]);
         // printf("chunk_id: %d\n", chunk_id);
-        d_maxIndex[chunk_id] = sharedIndex[0];
-        d_maxValue[chunk_id] = cuCreal(sharedArray[0]);
-        chunk_ids[chunk_id] = chunk_id;
+        d_maxIndex[chunk_id / 2] = sharedIndex[0];
+        d_maxValue[chunk_id / 2] = cuCreal(sharedArray[0]);
+        chunk_ids[chunk_id / 2] = chunk_id;
         // printf("Val: %f, Index: %d, chunk_id: %d\n", cuCreal(sharedArray[0]), sharedIndex[0], chunk_id);
 
         // for (int i = 0; i < 2; ++i){

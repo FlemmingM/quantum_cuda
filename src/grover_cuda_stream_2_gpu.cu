@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <omp.h>
 #include "utils_cuda.h"
-#include "utils_cuda_stream.h"
+#include "utils_cuda_stream_2_gpu.h"
 
 
 typedef cuDoubleComplex Complex;
@@ -38,13 +38,14 @@ int main(int argc, char* argv[]) {
 
     // Define the number of groups to do the parallel search with more than 10 qubits
     // while still using the fast shared memory
-
+    int num_devices = 2;
     long long int num_groups = N / pow(2, num_qubits_per_group);
     int num_qubits_per_chunk = num_qubits_per_group - (int)log2(num_chunks_per_group);
     int N_chunk = pow(2, num_qubits_per_chunk);
     long long int num_chunks = num_groups * num_chunks_per_group;
     printf("N: %lld\n", N);
     printf("n: %d\n", n);
+    printf("num_devices: %d\n", num_devices);
     printf("num_groups: %lld\n", num_groups);
     printf("num_chunks_per_group: %d\n", num_chunks_per_group);
     printf("num_qubits_per_chunk: %d\n", num_qubits_per_chunk);
@@ -81,7 +82,6 @@ int main(int argc, char* argv[]) {
     printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
 
     // Set the gates:
-    int num_devices = 1;
     Complex *H_d[num_devices];
     Complex *I_d[num_devices];
     Complex *Z_d[num_devices];
@@ -102,33 +102,38 @@ int main(int argc, char* argv[]) {
 
     cudaStream_t streams[num_chunks_per_group];
 
-    Complex *solution_state_h;
+    Complex *solution_state_h[num_devices];
     Complex *state_h[num_chunks_per_group];
     Complex *state_d[num_chunks_per_group];
     int *new_idx_d[num_chunks_per_group];
     int *old_idx_d[num_chunks_per_group];
 
     // To get the parallel search results
-    int *d_maxIndex;
-    int *h_maxIndex;
-    int *d_chunk_ids;
-    int *h_chunk_ids;
-    double *d_maxValue;
-    double *h_maxValue;
-    cudaMalloc(&d_maxIndex, num_chunks_per_group*sizeof(int));
-    cudaMallocHost(&h_maxIndex, num_chunks_per_group*sizeof(int));
-    cudaMalloc(&d_maxValue, num_chunks_per_group*sizeof(double));
-    cudaMallocHost(&h_maxValue, num_chunks_per_group*sizeof(double));
-    cudaMalloc(&d_chunk_ids, num_chunks_per_group*sizeof(double));
-    cudaMallocHost(&h_chunk_ids, num_chunks_per_group*sizeof(double));
+    int *d_maxIndex[num_devices];
+    int *h_maxIndex[num_devices];
+    int *d_chunk_ids[num_devices];
+    int *h_chunk_ids[num_devices];
+    double *d_maxValue[num_devices];
+    double *h_maxValue[num_devices];
 
-
-    // init the arrays:
-
-
+    for (int i = 0; i < num_devices; ++i) {
+        cudaSetDevice(i);
+        cudaMalloc(&d_maxIndex[i], num_chunks_per_group / 2*sizeof(int));
+        cudaMallocHost(&h_maxIndex[i], num_chunks_per_group / 2*sizeof(int));
+        cudaMalloc(&d_maxValue[i], num_chunks_per_group / 2*sizeof(double));
+        cudaMallocHost(&h_maxValue[i], num_chunks_per_group / 2*sizeof(double));
+        cudaMalloc(&d_chunk_ids[i], num_chunks_per_group / 2*sizeof(double));
+        cudaMallocHost(&h_chunk_ids[i], num_chunks_per_group / 2*sizeof(double));
+        // allocate the solution state:
+        cudaMallocHost((void **)&solution_state_h[i], N_chunk * sizeof(Complex));
+    }
 
     // Create the streams
     for (int i = 0; i < num_chunks_per_group; ++i) {
+        int device_id = i % num_devices;
+        // printf("device_id: %d +++++++++++++++++++\n", device_id);
+        cudaSetDevice(device_id);
+
         cudaStreamCreate(&streams[i]);
         cudaMallocHost((void **)&state_h[i], N_chunk * sizeof(Complex));
         state_h[i][0] = make_cuDoubleComplex(1.0, 0.0);
@@ -141,23 +146,21 @@ int main(int argc, char* argv[]) {
         cudaMemcpyAsync(state_d[i], state_h[i], N_chunk * sizeof(Complex), cudaMemcpyHostToDevice, streams[i]);
     }
 
-
-    // allocate the solution state:
-    cudaMallocHost((void **)&solution_state_h, N_chunk * sizeof(Complex));
-
+    int solution_device_id = -1;
     int marked_chunk = -99;
     for (int j = 0; j < num_groups; ++j) {
         // printf("%d / %d\n", j, num_groups);
         // #pragma omp parallel for num_threads(num_chunks_per_group)
         for (int i = 0; i < num_chunks_per_group; ++i) {
-            // cudaStreamCreate(&streams[i]);
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
             int index = j*num_chunks_per_group+i;
 
             // ### Here we run Grover's algorithm
             // initState<<<dimGrid, dimBlock, 0, streams[i]>>>(state_d[i], N_chunk);
             applyGateAllQubits(
                 state_d[i],
-                H_d[0], new_idx_d[i],
+                H_d[device_id], new_idx_d[i],
                 old_idx_d[i], num_qubits_per_chunk,
                 dimBlock,
                 dimGrid,
@@ -174,7 +177,7 @@ int main(int argc, char* argv[]) {
 
                 applyDiffusionOperator(
                     state_d[i],
-                    X_H_d[0], H_d[0], X_d[0], Z_d[0], new_idx_d[i],
+                    X_H_d[device_id], H_d[device_id], X_d[device_id], Z_d[device_id], new_idx_d[i],
                     old_idx_d[i], num_qubits_per_chunk, dimBlock, dimGrid, sharedMemSize,
                     0, N_chunk,
                     streams[i]
@@ -183,44 +186,58 @@ int main(int argc, char* argv[]) {
         }
 
         for (int i = 0; i < num_chunks_per_group; ++i) {
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
             cudaStreamSynchronize(streams[i]);
         }
         cudaDeviceSynchronize();
 
 
         for (int i = 0; i < num_chunks_per_group; ++i){
-            findMaxIndexKernel<<<1, N_chunk, 0, streams[i]>>>(state_d[i], d_maxIndex, d_maxValue, N_chunk, i, d_chunk_ids);
-            cudaMemcpyAsync(h_maxIndex, d_maxIndex, num_chunks_per_group*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
-            cudaMemcpyAsync(h_chunk_ids, d_chunk_ids, num_chunks_per_group*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
-            cudaMemcpyAsync(h_maxValue, d_maxValue, num_chunks_per_group*sizeof(double), cudaMemcpyDeviceToHost, streams[i]);
-
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
+            findMaxIndexKernel<<<1, N_chunk, 0, streams[i]>>>(state_d[i], d_maxIndex[device_id], d_maxValue[device_id], N_chunk, i, d_chunk_ids[device_id]);
+            cudaMemcpyAsync(h_maxIndex[device_id], d_maxIndex[device_id], num_chunks_per_group / 2*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
+            cudaMemcpyAsync(h_chunk_ids[device_id], d_chunk_ids[device_id], num_chunks_per_group / 2*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
+            cudaMemcpyAsync(h_maxValue[device_id], d_maxValue[device_id], num_chunks_per_group / 2*sizeof(double), cudaMemcpyDeviceToHost, streams[i]);
+            // cudaMemcpyAsync(state_h[i], state_d[i], N_chunk*sizeof(Complex), cudaMemcpyDeviceToHost, streams[i]);
         }
 
         for (int i = 0; i < num_chunks_per_group; ++i) {
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
             cudaStreamSynchronize(streams[i]);
         }
         cudaDeviceSynchronize();
 
 
+
         for (int i = 0; i < num_chunks_per_group; ++i){
-            // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i], h_maxIndex[i], h_maxValue[i]);
-            if(h_maxValue[i] >= 0.7){
-                printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i], h_maxIndex[i], h_maxValue[i]);
-                marked_chunk = h_chunk_ids[i];
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
+            // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i][i/2], h_maxIndex[i][i/2], h_maxValue[i][i/2]);
+            // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i][1], h_maxIndex[i][1], h_maxValue[i][1]);
+
+            if(h_maxValue[device_id][i/2] >= 0.7){
+                printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[device_id][i/2], h_maxIndex[device_id][i/2], h_maxValue[device_id][i/2]);
+                marked_chunk = h_chunk_ids[device_id][i];
                 int index = marked_chunk % num_chunks_per_group;
 
-                cudaMemcpyAsync(solution_state_h, state_d[index], N_chunk * sizeof(Complex), cudaMemcpyDeviceToHost, streams[index]);
+                solution_device_id = device_id;
+                cudaMemcpyAsync(solution_state_h[device_id], state_d[index], N_chunk * sizeof(Complex), cudaMemcpyDeviceToHost, streams[index]);
                 cudaStreamSynchronize(streams[index]);
             }
         }
+
         cudaDeviceSynchronize();
 
         for (int i = 0; i < num_chunks_per_group; ++i){
+            int device_id = i % num_devices;
+            cudaSetDevice(device_id);
             initState<<<dimGrid, dimBlock, 0, streams[i]>>>(state_d[i], N_chunk);
             cudaStreamSynchronize(streams[i]);
         }
         cudaDeviceSynchronize();
-
     } // end of the out loop
 
     for (int i = 0; i < num_chunks_per_group; ++i) {
@@ -230,7 +247,13 @@ int main(int argc, char* argv[]) {
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
 
-    // printState(solution_state_h, N_chunk, "Initial state");
+
+    // for (int i = 0; i < num_chunks_per_group; ++i) {
+    //     printState(state_h[i], N_chunk, "Initial state");
+    // }
+
+    // printState(solution_state_h[solution_device_id], N_chunk, "Solution state");
+
 
 
     for (int i = 0; i < num_devices; ++i) {
@@ -239,6 +262,14 @@ int main(int argc, char* argv[]) {
         cudaFree(Z_d[i]);
         cudaFree(X_d[i]);
         cudaFree(X_H_d[i]);
+
+        cudaFreeHost(solution_state_h[i]);
+        cudaFree(d_maxIndex[i]);
+        cudaFree(d_chunk_ids[i]);
+        cudaFree(d_maxValue[i]);
+        cudaFreeHost(h_maxIndex[i]);
+        cudaFreeHost(h_chunk_ids[i]);
+        cudaFreeHost(h_maxValue[i]);
     }
 
 
@@ -247,17 +278,9 @@ int main(int argc, char* argv[]) {
         cudaFree(old_idx_d[i]);
         cudaFree(state_d[i]);
         cudaFreeHost(state_h[i]);
-
-
     }
 
-    cudaFreeHost(solution_state_h);
-    cudaFree(d_maxIndex);
-    cudaFree(d_chunk_ids);
-    cudaFree(d_maxValue);
-    cudaFreeHost(h_maxIndex);
-    cudaFreeHost(h_chunk_ids);
-    cudaFreeHost(h_maxValue);
+
 
     return 0;
 }
