@@ -43,14 +43,7 @@ int main(int argc, char* argv[]) {
     int num_qubits_per_chunk = num_qubits_per_group - (int)log2(num_chunks_per_group);
     int N_chunk = pow(2, num_qubits_per_chunk);
     long long int num_chunks = num_groups * num_chunks_per_group;
-    printf("N: %lld\n", N);
-    printf("n: %d\n", n);
-    printf("num_devices: %d\n", num_devices);
-    printf("num_groups: %lld\n", num_groups);
-    printf("num_chunks_per_group: %d\n", num_chunks_per_group);
-    printf("num_qubits_per_chunk: %d\n", num_qubits_per_chunk);
-    printf("N_chunk: %d\n", N_chunk);
-    printf("num_chunks: %lld\n", num_chunks);
+
 
     if (N_chunk > pow(2, 10)) {
         fprintf(stderr, "You chose a number of qubits per group of: %d and a number of chunks per group of: %d\n Change the config so that the number of qubits per chunk is maximally 10 to fit into 1 block", num_qubits_per_group, num_chunks_per_group);
@@ -73,13 +66,27 @@ int main(int argc, char* argv[]) {
 
     markedState = markedState % (N / num_chunks);
     long long int recoveredState = oracle_chunk*(N / num_chunks)+markedState;
-    printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
+    // printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
 
 
     dim3 dimBlock(N_chunk);
-    dim3 dimGrid(num_chunks_per_group);
+    dim3 dimGrid(1);
 
-    printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
+    // printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
+
+    int print_val = 0;
+    if (print_val == 1) {
+        printf("N: %lld\n", N);
+        printf("n: %d\n", n);
+        printf("num_devices: %d\n", num_devices);
+        printf("num_groups: %lld\n", num_groups);
+        printf("num_chunks_per_group: %d\n", num_chunks_per_group);
+        printf("num_qubits_per_chunk: %d\n", num_qubits_per_chunk);
+        printf("N_chunk: %d\n", N_chunk);
+        printf("num_chunks: %lld\n", num_chunks);
+        printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
+        printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
+    }
 
     // Set the gates:
     Complex *H_d[num_devices];
@@ -94,7 +101,7 @@ int main(int argc, char* argv[]) {
     // // Assuming we have t = 1 solution in grover's algorithm
     // // we have k = floor(pi/4 * sqrt(N/num_chunks))
     long long int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
-    printf("running %lld rounds\n", k);
+    // printf("running %lld rounds\n", k);
 
 
 
@@ -131,7 +138,6 @@ int main(int argc, char* argv[]) {
     // Create the streams
     for (int i = 0; i < num_chunks_per_group; ++i) {
         int device_id = i % num_devices;
-        // printf("device_id: %d +++++++++++++++++++\n", device_id);
         cudaSetDevice(device_id);
 
         cudaStreamCreate(&streams[i]);
@@ -146,10 +152,11 @@ int main(int argc, char* argv[]) {
         cudaMemcpyAsync(state_d[i], state_h[i], N_chunk * sizeof(Complex), cudaMemcpyHostToDevice, streams[i]);
     }
 
+    int marked_max_val = -99;
+    int marked_max_idx = -99;
     int solution_device_id = -1;
     int marked_chunk = -99;
     for (int j = 0; j < num_groups; ++j) {
-        // printf("%d / %d\n", j, num_groups);
         // #pragma omp parallel for num_threads(num_chunks_per_group)
         for (int i = 0; i < num_chunks_per_group; ++i) {
             int device_id = i % num_devices;
@@ -157,7 +164,6 @@ int main(int argc, char* argv[]) {
             int index = j*num_chunks_per_group+i;
 
             // ### Here we run Grover's algorithm
-            // initState<<<dimGrid, dimBlock, 0, streams[i]>>>(state_d[i], N_chunk);
             applyGateAllQubits(
                 state_d[i],
                 H_d[device_id], new_idx_d[i],
@@ -218,8 +224,8 @@ int main(int argc, char* argv[]) {
             // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i][i/2], h_maxIndex[i][i/2], h_maxValue[i][i/2]);
             // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i][1], h_maxIndex[i][1], h_maxValue[i][1]);
 
-            if(h_maxValue[device_id][i/2] >= 0.7){
-                printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[device_id][i/2], h_maxIndex[device_id][i/2], h_maxValue[device_id][i/2]);
+            if(h_maxValue[device_id][i/2] >= 0.5){
+                // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[device_id][i/2], h_maxIndex[device_id][i/2], h_maxValue[device_id][i/2]);
                 marked_chunk = h_chunk_ids[device_id][i];
                 int index = marked_chunk % num_chunks_per_group;
 
@@ -246,6 +252,10 @@ int main(int argc, char* argv[]) {
 
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
+
+    printf("%d,%lld,%lld,%lld,%d,%d,%d,%d,%d,%d,%f,%f\n",
+        n, k, num_groups, num_chunks, num_qubits_per_group, num_chunks_per_group, dimBlock.x, marked_chunk, markedState, marked_max_idx, marked_max_val, elapsed);
+
 
 
     // for (int i = 0; i < num_chunks_per_group; ++i) {

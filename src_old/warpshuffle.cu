@@ -23,9 +23,10 @@ __global__ void warp_sum_reduction(const int* input, int* output, int N, int war
     }
 }
 
-int main() {
-    int N = 512;
-    int warp_size = 64;
+int main(int argc, char* argv[]) {
+
+    int N = atoi(argv[1]); //512
+    int warp_size = atoi(argv[2]);//64;
     int out_size = N / warp_size;
     int *d_input, *d_output;
     int *h_input, *h_output;
@@ -34,8 +35,8 @@ int main() {
     cudaMallocHost(&h_input, N * sizeof(int));
     cudaMallocHost(&h_output, out_size * sizeof(int));
 
-    for (int i = 1; i < N; ++i) {
-        h_input[i] = 1;
+    for (int i = 0; i < N; ++i) {
+        h_input[i] = i;
     }
 
     // Fill d_input with data (omitted here for brevity)

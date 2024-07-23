@@ -33,7 +33,12 @@ module load gcc/13.1.0-binutils-2.40
 
 
 # Experiments
-- speedup
+- speedup: simple versions up to 10 qubits --> show limits and improvements
+- speedup: use streams to improve the number of qubits
+- speedup with 2 GPUs
+- speedup with memory deletion to make space for more qubits
+--> use D&Q algo to find relevant idxs as unit test
+--> remove chunks without solution
 - profiling: memory, cache
 - 2 GPUs --> should be 2x fast
 - check with theoretical values

@@ -43,13 +43,6 @@ int main(int argc, char* argv[]) {
     int num_qubits_per_chunk = num_qubits_per_group - (int)log2(num_chunks_per_group);
     int N_chunk = pow(2, num_qubits_per_chunk);
     long long int num_chunks = num_groups * num_chunks_per_group;
-    printf("N: %lld\n", N);
-    printf("n: %d\n", n);
-    printf("num_groups: %lld\n", num_groups);
-    printf("num_chunks_per_group: %d\n", num_chunks_per_group);
-    printf("num_qubits_per_chunk: %d\n", num_qubits_per_chunk);
-    printf("N_chunk: %d\n", N_chunk);
-    printf("num_chunks: %lld\n", num_chunks);
 
     if (N_chunk > pow(2, 10)) {
         fprintf(stderr, "You chose a number of qubits per group of: %d and a number of chunks per group of: %d\n Change the config so that the number of qubits per chunk is maximally 10 to fit into 1 block", num_qubits_per_group, num_chunks_per_group);
@@ -72,13 +65,25 @@ int main(int argc, char* argv[]) {
 
     markedState = markedState % (N / num_chunks);
     long long int recoveredState = oracle_chunk*(N / num_chunks)+markedState;
-    printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
 
 
     dim3 dimBlock(N_chunk);
-    dim3 dimGrid(num_chunks_per_group);
+    dim3 dimGrid(1);
+    // dim3 dimGrid(num_chunks_per_group);
 
-    printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
+    int print_val = 0;
+    if (print_val == 1) {
+        printf("N: %lld\n", N);
+        printf("n: %d\n", n);
+        printf("num_groups: %lld\n", num_groups);
+        printf("num_chunks_per_group: %d\n", num_chunks_per_group);
+        printf("num_qubits_per_chunk: %d\n", num_qubits_per_chunk);
+        printf("N_chunk: %d\n", N_chunk);
+        printf("num_chunks: %lld\n", num_chunks);
+        printf("oracle_chunk: %lld, pos: %lld, recovered: %lld\n", oracle_chunk, markedState, recoveredState);
+        printf("dimGrid: %d, dimBlock: %d\n", dimGrid.x, dimBlock.x);
+    }
+
 
     // Set the gates:
     int num_devices = 1;
@@ -94,7 +99,7 @@ int main(int argc, char* argv[]) {
     // // Assuming we have t = 1 solution in grover's algorithm
     // // we have k = floor(pi/4 * sqrt(N/num_chunks))
     long long int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
-    printf("running %lld rounds\n", k);
+    // printf("running %lld rounds\n", k);
 
 
 
@@ -146,6 +151,8 @@ int main(int argc, char* argv[]) {
     cudaMallocHost((void **)&solution_state_h, N_chunk * sizeof(Complex));
 
     int marked_chunk = -99;
+    int marked_max_val = -99;
+    int marked_max_idx = -99;
     for (int j = 0; j < num_groups; ++j) {
         // printf("%d / %d\n", j, num_groups);
         // #pragma omp parallel for num_threads(num_chunks_per_group)
@@ -204,9 +211,11 @@ int main(int argc, char* argv[]) {
 
         for (int i = 0; i < num_chunks_per_group; ++i){
             // printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i], h_maxIndex[i], h_maxValue[i]);
-            if(h_maxValue[i] >= 0.7){
-                printf("chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i], h_maxIndex[i], h_maxValue[i]);
+            if(h_maxValue[i] >= 0.5){
+                // printf("Solution: chunk id: %d, maxIdx: %d, maxVal: %f\n", h_chunk_ids[i], h_maxIndex[i], h_maxValue[i]);
                 marked_chunk = h_chunk_ids[i];
+                marked_max_idx = h_maxIndex[i];
+                marked_max_val = h_maxValue[i];
                 int index = marked_chunk % num_chunks_per_group;
 
                 cudaMemcpyAsync(solution_state_h, state_d[index], N_chunk * sizeof(Complex), cudaMemcpyDeviceToHost, streams[index]);
@@ -228,7 +237,10 @@ int main(int argc, char* argv[]) {
     }
 
     double elapsed = omp_get_wtime() - time;
-    printf("Time: %f \n", elapsed);
+    // printf("Time: %f \n", elapsed);
+    // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time
+    printf("%d,%lld,%lld,%lld,%d,%d,%d,%d,%d,%d,%f,%f\n",
+        n, k, num_groups, num_chunks, num_qubits_per_group, num_chunks_per_group, dimBlock.x, marked_chunk, markedState, marked_max_idx, marked_max_val, elapsed);
 
     // printState(solution_state_h, N_chunk, "Initial state");
 

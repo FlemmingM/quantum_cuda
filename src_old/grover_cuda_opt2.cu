@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <omp.h>
-#include "utils_cuda_opt3.h"
+#include "utils_cuda_opt2.h"
 
 typedef cuDoubleComplex Complex;
 
@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(state_h, state_d, N * sizeof(Complex), cudaMemcpyDeviceToHost);
 
     // if (verbose == 1) {
-    // printState(state_h, N, "Initial state");
+    printState(state_h, N, "Initial state");
     // }
 
     // // Apply Grover's algorithm k iteration and then sample

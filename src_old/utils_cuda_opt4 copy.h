@@ -12,13 +12,58 @@ typedef cuDoubleComplex Complex;
 // Complex** kroneckerProduct(Complex** A, int aRows, int aCols, Complex** B, int bRows, int bCols);
 // void printMatrix(Complex** matrix, int rows, int cols);
 double* simulate(const Complex* weights, long long int numElements, int numSamples);
+__global__ void applyPhaseFlip(Complex* state, long long int idx);
 
-__global__ void initState(Complex* state, long long int N);
+void applyGateAllQubits(
+    Complex* state,
+    const Complex* gate,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    );
 
-__global__ void initStateParallel(Complex* state, long long int N, long long int N_chunk);
+void applyGateSingleQubit(
+    Complex* state,
+    const Complex* gate,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    long long int idx,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    );
+
+void applyDiffusionOperator(
+    Complex* state,
+    const Complex* H,
+    const Complex* X,
+    const Complex* Z,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    );
 
 void saveArrayToCSV(const double *array, int N, const char* filename);
 
+__global__ void contract_tensor(
+    Complex* state,
+    const Complex* gate,
+    int qubit,
+    int* new_idx,
+    int* old_idx,
+    const int n,
+    long long int N
+    );
 
 __global__ void zeroOutState(Complex* new_state, long long int N);
 

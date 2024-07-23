@@ -8,6 +8,14 @@
 
 typedef cuDoubleComplex Complex;
 
+void printState(const Complex* state, long long int N, const char* message) {
+    printf("%s\n", message);
+    for (int i = 0; i < N; ++i) {
+        printf("(%.15f + %.15fi) ", cuCreal(state[i]), cuCimag(state[i]));
+    }
+    printf("\n");
+}
+
 void saveArrayToCSV(const double *array, long long int N, const char* filename) {
     FILE *file = fopen(filename, "w");
 
@@ -20,30 +28,6 @@ void saveArrayToCSV(const double *array, long long int N, const char* filename) 
         fprintf(file, "pos%d,%f\n", i, array[i]);
     }
     fclose(file);
-}
-
-__global__ void initState(Complex* state, long long int N) {
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx < N) {
-        if (idx==0) {
-            state[idx] = make_cuDoubleComplex(1.0, 0.0);
-        } else {
-            state[idx] = make_cuDoubleComplex(0.0, 0.0);
-        }
-
-    }
-}
-
-__global__ void initStateParallel(Complex* state, long long int N, long long int N_chunk) {
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx < N) {
-        if ((idx % N_chunk)==0) {
-            state[idx] = make_cuDoubleComplex(1.0, 0.0);
-        } else {
-            state[idx] = make_cuDoubleComplex(0.0, 0.0);
-        }
-
-    }
 }
 
 
@@ -72,12 +56,141 @@ __global__ void updateState(Complex* state, Complex* new_state, long long int N)
 }
 
 
-void printState(const Complex* state, long long int N, const char* message) {
-    printf("%s\n", message);
-    for (int i = 0; i < N; ++i) {
-        printf("(%.15f + %.15fi) ", cuCreal(state[i]), cuCimag(state[i]));
+__global__ void contract_tensor(
+        Complex* state,
+        const Complex* gate,
+        int qubit,
+        int* new_idx,
+        int* old_idx,
+        const int n,
+        const long long int N
+    ) {
+    extern __shared__ Complex shared_mem[]; // Use shared memory
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int offset = idx * n;
+
+
+    if (idx < N) {
+        int temp = idx;
+
+        // printf("idx: %d", idx);
+
+        // Compute the multi-dimensional index
+        for (int i = n - 1; i >= 0; --i) {
+            new_idx[offset + i] = temp % 2;
+            temp /= 2;
+        }
+
+        // Copy new_idx to old_idx
+        for (int i = 0; i < n; ++i) {
+            old_idx[offset + i] = new_idx[offset + i];
+        }
+
+        // Compute the two values for j = 0 and j = 1 and store in shared memory
+        for (int j = 0; j < 2; ++j) {
+            old_idx[offset + qubit] = j;
+
+            // Compute the linear index for old_idx
+            int old_linear_idx = 0;
+            int factor = 1;
+            for (int i = n - 1; i >= 0; --i) {
+                old_linear_idx += old_idx[offset + i] * factor;
+                factor *= 2;
+            }
+
+            // Store the result in shared memory
+            if (j == 0) {
+                // shared_mem[idx + j*N] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
+                shared_mem[idx] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
+
+            } else {
+
+                shared_mem[idx] = cuCadd(shared_mem[idx],
+                cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]));
+            }
+        }
+
+        printf("value[%d]: %.15f\n", idx, cuCreal(shared_mem[idx]));
+
+        __syncthreads();
+
+    //     printf("idx id: %d ############## \n", idx);
+    //     for (int i = 0; i < 2*N; ++i) {
+    //         printf("(%.15f) ", cuCreal(shared_mem[i]));
+    // }
+        // Perform reduction to sum two neighbor elements
+        // Complex val = shared_mem[idx];
+        // val.x += __shfl_down_sync(-1, val.x, 0);
+        // val.y += __shfl_down_sync(-1, val.y, 0);
+        // state[idx] = val;
+
+        // state[idx] = cuCadd(shared_mem[idx + N], shared_mem[idx]);
+        state[idx] = shared_mem[idx];
+
     }
-    printf("\n");
+}
+
+
+__global__ void applyPhaseFlip(Complex* state, long long int idx) {
+    state[idx] = cuCmul(state[idx], make_cuDoubleComplex(-1.0, 0.0));
+}
+
+void applyGateAllQubits(
+    Complex* state,
+    const Complex* gate,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    ) {
+
+    for (int i = 0; i < n; ++i) {
+        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_idx, old_idx, n, N);
+    }
+}
+
+void applyGateSingleQubit(
+    Complex* state,
+    const Complex* gate,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    long long int idx,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    ) {
+
+    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_idx, old_idx, n, N);
+    // Update the state with the new state
+    // updateState<<<dimGrid, dimBlock>>>(state, new_state, N);
+    // zeroOutState<<<dimGrid, dimBlock>>>(new_state, N);
+}
+
+void applyDiffusionOperator(
+    Complex* state,
+    const Complex* H,
+    const Complex* X,
+    const Complex* Z,
+    int* new_idx,
+    int* old_idx,
+    int n,
+    long long int N,
+    dim3 dimBlock,
+    dim3 dimGrid,
+    int sharedMemSize
+    ) {
+    applyGateAllQubits(state, H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, X, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyPhaseFlip<<<dimGrid, dimBlock>>>(state, N - 1);
+    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, X, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
+    applyGateSingleQubit(state, Z, new_idx, old_idx, n, N, 0, dimBlock, dimGrid, sharedMemSize);
+    applyGateAllQubits(state, H, new_idx, old_idx, n, N, dimBlock, dimGrid, sharedMemSize);
 }
 
 // double* simulate(const Complex* weights, int numElements, int numSamples) {
