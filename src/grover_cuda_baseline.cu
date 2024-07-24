@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <omp.h>
-#include "utils_cuda.h"
+#include "utils_cuda_baseline.h"
 
 typedef cuDoubleComplex Complex;
 
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(X_d, X_h, 4 * sizeof(Complex), cudaMemcpyHostToDevice);
 
 
-    dim3 dimBlock(256);
+    dim3 dimBlock(1024);
     dim3 dimGrid((N + dimBlock.x - 1) / dimBlock.x);
 
     // Malloc the indices on the device

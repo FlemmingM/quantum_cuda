@@ -234,6 +234,7 @@ int main(int argc, char* argv[]) {
                 cudaStreamSynchronize(streams[index]);
             }
         }
+        printf("hellloo\n");
 
         cudaDeviceSynchronize();
 
@@ -262,7 +263,7 @@ int main(int argc, char* argv[]) {
     //     printState(state_h[i], N_chunk, "Initial state");
     // }
 
-    // printState(solution_state_h[solution_device_id], N_chunk, "Solution state");
+    printState(solution_state_h[solution_device_id], N_chunk, "Solution state");
 
 
 

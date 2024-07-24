@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <omp.h>
 #include "utils_cuda.h"
-#include "utils_cuda_v1.h"
+#include "utils_cuda_v2.h"
 
 
 typedef cuDoubleComplex Complex;
@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     // }
 
     int n = atoi(argv[1]);
-    long long int N = (long long int)pow(2, n);
+    long long int N = pow(2, n);
     long long int markedState = atoi(argv[2]);
     const int num_chunks_per_group = atoi(argv[3]);
     const int num_qubits_per_group = atoi(argv[4]);
@@ -47,7 +47,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // int sharedMemSize = (int)(pow(2, 11)) * sizeof(Complex);
     int sharedMemSize = N_chunk * sizeof(Complex);
 
 
@@ -68,7 +67,6 @@ int main(int argc, char* argv[]) {
 
     dim3 dimBlock(N_chunk);
     dim3 dimGrid(num_chunks_per_group);
-    // dim3 dimGrid(num_chunks_per_group);
 
 
     int print_val = 1;
@@ -110,36 +108,82 @@ int main(int argc, char* argv[]) {
     Complex *state_d;
     int *new_idx_d;
     int *old_idx_d;
+    int *old_linear_idxs_d;
+    // int *old_linear_idxs_h;
+
+    // for indices
+    int sharedMemSize2 = 2*N_chunk * sizeof(int);
+
+    // cudaMallocHost(&old_linear_idxs_h, 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
+    cudaMalloc(&old_linear_idxs_d, 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
 
 
     // init the arrays:
     cudaMallocHost((void **)&state_h, N_group * sizeof(Complex));
-    for (int i = 0; i < N_group; ++i) {
-        if ((i % N_chunk)==0) {
-            state_h[i] = make_cuDoubleComplex(1.0, 0.0);
-        } else {
-            state_h[i] = make_cuDoubleComplex(0.0, 0.0);
-        }
-    }
+    // for (int i = 0; i < N_group; ++i) {
+    //     if ((i % N_chunk)==0) {
+    //         state_h[i] = make_cuDoubleComplex(1.0, 0.0);
+    //     } else {
+    //         state_h[i] = make_cuDoubleComplex(0.0, 0.0);
+    //     }
+    // }
 
     cudaMalloc((void **)&state_d, N_group * sizeof(Complex));
     cudaMalloc(&new_idx_d, N_group * n * sizeof(int));
     cudaMalloc(&old_idx_d, N_group * n * sizeof(int));
-    cudaMemcpy(state_d, state_h, N_group * sizeof(Complex), cudaMemcpyHostToDevice);
+    // cudaMemcpy(state_d, state_h, N_group * sizeof(Complex), cudaMemcpyHostToDevice);
+
+
+    // for (int i = 0; i < n; ++i) {
+    //     compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
+    // }
+
+    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N_chunk* num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < (2*N_chunk*num_qubits_per_chunk); ++i) {
+    //     printf("%d ", old_linear_idxs_h[i]);
+    // }
+
+    // initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 0, new_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 1, new_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 2, new_idx_d, n, N, old_linear_idxs_d);
+
+
+    // applyGateAllQubits(
+    //     state_d,
+    //     H_d[0], new_idx_d,
+    //     num_qubits_per_chunk,
+    //     dimBlock,
+    //     dimGrid,
+    //     sharedMemSize,
+    //     N_group,
+    //     old_linear_idxs_d
+    // );
+
+
+    // cudaMemcpy(state_h, state_d, N_group * sizeof(Complex), cudaMemcpyDeviceToHost);
+    // printState(state_h, N_group, "state end");
+
+double time2 = omp_get_wtime();
+for (int i = 0; i < num_qubits_per_chunk; ++i) {
+        compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
+    }
+
 
 for (int i = 0; i < num_groups; ++i) {
     // reset the state vector for the next group
     initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
 
     applyGateAllQubits(
-    state_d,
-    H_d[0], new_idx_d,
-    old_idx_d, num_qubits_per_chunk,
-    dimBlock,
-    dimGrid,
-    sharedMemSize,
-    0,
-    N_group
+        state_d,
+        H_d[0], new_idx_d,
+        num_qubits_per_chunk,
+        dimBlock,
+        dimGrid,
+        sharedMemSize,
+        N_group,
+        old_linear_idxs_d
     );
 
     for (int l = 0; l < k; ++l) {
@@ -151,10 +195,11 @@ for (int i = 0; i < num_groups; ++i) {
         applyDiffusionOperator(
             state_d,
             X_H_d[0], H_d[0], X_d[0], Z_d[0], new_idx_d,
-            old_idx_d, num_qubits_per_chunk, dimBlock, dimGrid, sharedMemSize,
+            num_qubits_per_chunk, dimBlock, dimGrid, sharedMemSize,
             num_chunks_per_group,
             N_chunk,
-            0, N_group
+            N_group,
+            old_linear_idxs_d
         );
     }
 
@@ -165,7 +210,10 @@ for (int i = 0; i < num_groups; ++i) {
     cudaDeviceSynchronize();
 }
 
-
+    // cudaMemcpy(state_h, state_d, N_group * sizeof(Complex), cudaMemcpyDeviceToHost);
+    // printState(state_h, N_group, "state end");
+    double elapsed2 = omp_get_wtime() - time2;
+    printf("Time compute: %f \n", elapsed2);
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
     // // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time
