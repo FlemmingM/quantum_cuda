@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <omp.h>
 #include "utils_cuda.h"
-#include "utils_cuda_v1.h"
+#include "utils_cuda_v3.h"
 
 
 typedef cuDoubleComplex Complex;
@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     // }
 
     int n = atoi(argv[1]);
-    long long int N = (long long int)pow(2, n);
+    long long int N = pow(2, n);
     long long int markedState = atoi(argv[2]);
     const int num_chunks_per_group = atoi(argv[3]);
     const int num_qubits_per_group = atoi(argv[4]);
@@ -47,7 +47,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // int sharedMemSize = (int)(pow(2, 11)) * sizeof(Complex);
     int sharedMemSize = N_chunk * sizeof(Complex);
 
 
@@ -67,6 +66,7 @@ int main(int argc, char* argv[]) {
 
 
     dim3 dimBlock(N_chunk);
+    dim3 dimBlock2(2*N_chunk);
     dim3 dimGrid(num_chunks_per_group);
 
 
@@ -108,7 +108,16 @@ int main(int argc, char* argv[]) {
     Complex *state_h;
     Complex *state_d;
     int *new_idx_d;
+    int *new_idx_h;
     int *old_idx_d;
+    int *old_linear_idxs_d;
+    int *old_linear_idxs_h;
+
+    // for indices
+    int sharedMemSize2 = 2*N_chunk * sizeof(int);
+
+    cudaMallocHost(&old_linear_idxs_h, 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
+    cudaMalloc(&old_linear_idxs_d, 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
 
 
     // init the arrays:
@@ -125,6 +134,70 @@ int main(int argc, char* argv[]) {
     cudaMalloc(&new_idx_d, N_group * n * sizeof(int));
     cudaMalloc(&old_idx_d, N_group * n * sizeof(int));
     // cudaMemcpy(state_d, state_h, N_group * sizeof(Complex), cudaMemcpyHostToDevice);
+    cudaMallocHost(&new_idx_h, N_chunk * num_qubits_per_chunk * sizeof(int));
+
+
+
+    for (int i = 0; i < num_qubits_per_chunk; ++i) {
+        compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
+    }
+
+    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N_chunk* num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < (2*N_chunk*num_qubits_per_chunk); ++i) {
+    //     printf("%d ", old_linear_idxs_h[i]);
+    // }
+    // printf("\n");
+
+    // cudaMemcpy(new_idx_h, new_idx_d, N_chunk * num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < (N_chunk * num_qubits_per_chunk); ++i) {
+    //     printf("%d ", new_idx_h[i]);
+    // }
+    // printf("\n");
+
+    // initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 0, new_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 1, new_idx_d, n, N, old_linear_idxs_d);
+    // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 2, new_idx_d, n, N, old_linear_idxs_d);
+
+
+    // applyGateAllQubits(
+    //     state_d,
+    //     H_d[0], new_idx_d,
+    //     num_qubits_per_chunk,
+    //     dimBlock,
+    //     dimGrid,
+    //     sharedMemSize,
+    //     N_group,
+    //     old_linear_idxs_d
+    // );
+
+
+    // cudaMemcpy(state_h, state_d, N_group * sizeof(Complex), cudaMemcpyDeviceToHost);
+    // printState(state_h, N_group, "state end");
+
+double time2 = omp_get_wtime();
+// for (int i = 0; i < num_qubits_per_chunk; ++i) {
+//         compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
+//     }
+
+// initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
+// contract_tensor<<<dimGrid, dimBlock2, 2*sharedMemSize>>>(state_d, H_d[0], 0, new_idx_d, num_qubits_per_chunk, 2*N_group, old_linear_idxs_d);
+// contract_tensor<<<dimGrid, 16, 2*sharedMemSize>>>(state_d, H_d[0], 1, new_idx_d, num_qubits_per_chunk, 2*N_group, old_linear_idxs_d);
+// contract_tensor<<<dimGrid, 16, 2*sharedMemSize>>>(state_d, H_d[0], 2, new_idx_d, num_qubits_per_chunk, 2*N_group, old_linear_idxs_d);
+
+
+// applyGateAllQubits(
+//         state_d,
+//         H_d[0], new_idx_d,
+//         num_qubits_per_chunk,
+//         dimBlock,
+//         dimGrid,
+//         sharedMemSize,
+//         N_group,
+//         old_linear_idxs_d
+//     );
 
 
 for (int i = 0; i < num_groups; ++i) {
@@ -132,29 +205,43 @@ for (int i = 0; i < num_groups; ++i) {
     initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
 
     applyGateAllQubits(
-    state_d,
-    H_d[0], new_idx_d,
-    old_idx_d, num_qubits_per_chunk,
-    dimBlock,
-    dimGrid,
-    sharedMemSize,
-    0,
-    N_group
+        state_d,
+        H_d[0], new_idx_d,
+        num_qubits_per_chunk,
+        dimBlock2,
+        dimGrid,
+        2*sharedMemSize,
+        2*N_group,
+        old_linear_idxs_d
     );
+
+    // applyPhaseFlip<<<dimGrid, dimBlock, 0>>>(state_d, markedState);
+    // printf("\n");
+    // applyGateAllQubits(
+    //     state_d,
+    //     X_H_d[0], new_idx_d,
+    //     num_qubits_per_chunk,
+    //     dimBlock2,
+    //     dimGrid,
+    //     2*sharedMemSize,
+    //     2*N_group,
+    //     old_linear_idxs_d
+    // );
 
     for (int l = 0; l < k; ++l) {
         if (i == oracle_group) {
             // printf("oracle chunk_id: %lld, i: %d\n", oracle_group, i);
-            applyPhaseFlip<<<dimGrid, dimBlock, 0>>>(state_d, markedState);
+            applyPhaseFlip<<<dimGrid, dimBlock2, 0>>>(state_d, markedState);
         }
 
         applyDiffusionOperator(
             state_d,
             X_H_d[0], H_d[0], X_d[0], Z_d[0], new_idx_d,
-            old_idx_d, num_qubits_per_chunk, dimBlock, dimGrid, sharedMemSize,
+            num_qubits_per_chunk, dimBlock2, dimGrid, 2*sharedMemSize,
             num_chunks_per_group,
             N_chunk,
-            0, N_group
+            2*N_group,
+            old_linear_idxs_d
         );
     }
 
@@ -165,7 +252,11 @@ for (int i = 0; i < num_groups; ++i) {
     cudaDeviceSynchronize();
 }
 
+    // cudaMemcpy(state_h, state_d, N_group * sizeof(Complex), cudaMemcpyDeviceToHost);
+    // printState(state_h, N_group, "state end");
 
+    double elapsed2 = omp_get_wtime() - time2;
+    printf("Time compute: %f \n", elapsed2);
     double elapsed = omp_get_wtime() - time;
     printf("Time: %f \n", elapsed);
     // // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time

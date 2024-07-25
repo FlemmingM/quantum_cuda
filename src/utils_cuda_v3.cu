@@ -101,31 +101,24 @@ __global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_
     }
 }
 
-__global__ void contract_tensor(
-        Complex* state,
-        const Complex* gate,
+__global__ void compute_idx(
         int qubit,
         int* new_idx,
         int* old_idx,
         const int n,
-        // const long long int N,
-        const long long int lower,
-        const long long int upper
-) {
-    extern __shared__ Complex shared_mem[]; // Use shared memory
+        const long long int N,
+        int* old_linear_idxs
+    ) {
+    extern __shared__ int shared_memory[]; // Use shared memory
+
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int offset = idx * n;
+    // int chunk_size = pow(2, n);
+    int offset2 = qubit*2*N;
 
 
-    // int chunk_size = upper-lower;
-    int chunk_size = pow(2, n);
-
-    if ((idx >= lower) & (idx < upper)) {
-
-        int offset = idx * n;
-        int temp = idx % chunk_size;
-        // int temp = idx;
-
-        // printf("idx: %d, temp: %d, offset: %d, lower %lld, upper %lld\n", idx, temp, offset, lower, upper);
+    if (idx < N) {
+        int temp = idx;
 
         // Compute the multi-dimensional index
         for (int i = n - 1; i >= 0; --i) {
@@ -149,28 +142,71 @@ __global__ void contract_tensor(
                 old_linear_idx += old_idx[offset + i] * factor;
                 factor *= 2;
             }
-
-            // needed to translate back to the full state array!!!
-            if (idx >= chunk_size) {
-                old_linear_idx += (idx / chunk_size) * chunk_size;
-            }
-
-            // Store the result in shared memory
-            if (j == 0) {
-                Complex val = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
-                shared_mem[idx % chunk_size] = val;
-                printf("idx: %d, j: %d, old_lin_idx %d, val: %f\n", idx, j, old_linear_idx, cuCreal(val));
-
-            } else {
-                Complex val = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
-                shared_mem[idx % chunk_size] = cuCadd(shared_mem[idx % chunk_size], val);
-                // printf("idx: %d, j: %d, old_lin_idx %d, val: %f\n", idx, j, old_linear_idx, cuCreal(val));
-            }
-            // printf("idx: %d, temp: %d, offset: %d, old_lin_idx %d, upper %lld\n", idx, temp, offset, old_linear_idx, upper);
-
+            // coalesced
+            shared_memory[2*idx + j] = old_linear_idx;
         }
+        // coalesced
+        old_linear_idxs[2*idx + offset2] = shared_memory[2*idx];
+        old_linear_idxs[2*idx + 1 + offset2] = shared_memory[2*idx+1];
+    }
+}
+
+__global__ void contract_tensor(
+        Complex* state,
+        const Complex* gate,
+        int qubit,
+        int* new_idx,
+        const int n,
+        const long long int N,
+        int* old_linear_idxs
+
+) {
+    extern __shared__ Complex shared_mem[]; // Use shared memory
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+
+
+    int chunk_size = pow(2, n);
+
+    if (idx < N) {
+        int idx2 = idx /2;
+        int offset = (idx2 % chunk_size) * n;
+
+        // Compute the two values for j = 0 and j = 1 and store in shared memory
+        int j = idx % 2;
+
+        int old_linear_idx = old_linear_idxs[2*(idx2 % chunk_size) + j + qubit*2*chunk_size];
+        old_linear_idx += (idx2 / chunk_size) * chunk_size;
+
+        Complex val = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
+        // shared_mem[idx % chunk_size] = val;
+
+        // works!
+        shared_mem[idx % (2*chunk_size)] = val;
+
+        // very slow!!!
+        // shared_mem[(idx % (2*chunk_size)) + j*(chunk_size-1)] = val;
+        // printf("idx: %d, idx2: %d, shared_mem_pos: %d, j: %d, old_lin_idx %d, val: %f\n", idx, idx2, idx % (2*chunk_size), j, old_linear_idx, cuCreal(val));
+
         __syncthreads();
-        state[idx] = shared_mem[idx % chunk_size];
+
+        // needs to be adjusted for the blocks since we might have more than 1!!!
+        val = shared_mem[idx % (2*chunk_size)];
+        val.x += __shfl_down_sync(0xffffffff, val.x, 1);
+        val.y += __shfl_down_sync(0xffffffff, val.y, 1);
+
+
+        if ((idx % 2) == 0) {
+            state[idx2] = val;
+        }
+
+
+        // very slow!!!
+        // val = shared_mem[(idx % (2*chunk_size)) + j*(chunk_size-1)];
+        // val.x += __shfl_down_sync(0xffffffff, val.x, chunk_size);
+        // val.y += __shfl_down_sync(0xffffffff, val.y, chunk_size);
+        // if (((idx/chunk_size) % 2) == 0) {
+        //     state[idx2] = val;
+        // }
     }
 }
 
@@ -183,17 +219,16 @@ void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
     int* new_idx,
-    int* old_idx,
     int n,
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize,
-    const long long int lower,
-    const long long int upper
+    const long long int N,
+    int* old_linear_idxs
     ) {
 
     for (int i = 0; i < n; ++i) {
-        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_idx, old_idx, n, lower, upper);
+        contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, i, new_idx, n, N, old_linear_idxs);
     }
 }
 
@@ -201,17 +236,16 @@ void applyGateSingleQubit(
     Complex* state,
     const Complex* gate,
     int* new_idx,
-    int* old_idx,
     int n,
     long long int idx,
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize,
-    const long long int lower,
-    const long long int upper
+    const long long int N,
+    int* old_linear_idxs
     ) {
 
-    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_idx, old_idx, n, lower, upper);
+    contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state, gate, idx, new_idx, n, N, old_linear_idxs);
 }
 
 void applyDiffusionOperator(
@@ -221,27 +255,22 @@ void applyDiffusionOperator(
     const Complex* X,
     const Complex* Z,
     int* new_idx,
-    int* old_idx,
     int n,
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize,
     const int num_chunks_per_group,
     const long long int N_chunk,
-    const long long int lower,
-    const long long int upper
+    const long long int N,
+    int* old_linear_idxs
     ) {
-    applyGateAllQubits(state, X_H, new_idx, old_idx, n, dimBlock, dimGrid, sharedMemSize, lower, upper);
+    applyGateAllQubits(state, X_H, new_idx, n, dimBlock, dimGrid, sharedMemSize, N, old_linear_idxs);
     for (int i = 0; i < num_chunks_per_group; ++i) {
         applyPhaseFlip<<<dimGrid, dimBlock, 0>>>(state, (i+1)*N_chunk - 1);
-        // applyGateSingleQubit(state, Z, new_idx, old_idx, n, i*N_chunk, dimBlock, dimGrid, sharedMemSize, lower, upper);
     }
 
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, 0, dimBlock, dimGrid, sharedMemSize, lower, upper);
-    applyGateAllQubits(state, X, new_idx, old_idx, n, dimBlock, dimGrid, sharedMemSize, lower, upper);
-    // for (int i = 0; i < num_chunks_per_group; ++i) {
-    //     applyGateSingleQubit(state, Z, new_idx, old_idx, n, i*N_chunk, dimBlock, dimGrid, sharedMemSize, lower, upper);
-    // }
-    applyGateSingleQubit(state, Z, new_idx, old_idx, n, 0, dimBlock, dimGrid, sharedMemSize, lower, upper);
-    applyGateAllQubits(state, H, new_idx, old_idx, n, dimBlock, dimGrid, sharedMemSize, lower, upper);
+    applyGateSingleQubit(state, Z, new_idx, n, 0, dimBlock, dimGrid, sharedMemSize, N, old_linear_idxs);
+    applyGateAllQubits(state, X, new_idx, n, dimBlock, dimGrid, sharedMemSize, N, old_linear_idxs);
+    applyGateSingleQubit(state, Z, new_idx, n, 0, dimBlock, dimGrid, sharedMemSize, N, old_linear_idxs);
+    applyGateAllQubits(state, H, new_idx, n, dimBlock, dimGrid, sharedMemSize, N, old_linear_idxs);
 }

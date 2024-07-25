@@ -127,6 +127,7 @@ int main(int argc, char* argv[]) {
 
     int chunk_id = -1;
     // init the arrays:
+    #pragma omp parallel for num_threads(2)
     for (int j = 0; j < num_devices; ++j) {
         // int device_id = i % num_devices;
         cudaSetDevice(j);
@@ -149,7 +150,7 @@ int main(int argc, char* argv[]) {
 
 
     for (int i = 0; i < num_groups/2; ++i) {
-        // #pragma omp parallel for num_threads(num_devices)
+        #pragma omp parallel for num_threads(2)
         for (int h = 0; h < num_devices; ++h) {
             // reset the state vector for the next group
             int index = i*num_devices + h;
@@ -194,6 +195,7 @@ int main(int argc, char* argv[]) {
             }
 
         }
+        #pragma omp parallel for num_threads(2)
         for (int i = 0; i < num_devices; ++i) {
             cudaSetDevice(i);
             cudaStreamSynchronize(streams[i]);

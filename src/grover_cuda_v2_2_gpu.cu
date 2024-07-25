@@ -132,6 +132,7 @@ int main(int argc, char* argv[]) {
 
     int chunk_id = -1;
     // init the arrays:
+    #pragma omp parallel for num_threads(2)
     for (int j = 0; j < num_devices; ++j) {
         // int device_id = i % num_devices;
         cudaSetDevice(j);
@@ -147,8 +148,8 @@ int main(int argc, char* argv[]) {
         // }
 
         cudaMalloc((void **)&state_d[j], N_group * sizeof(Complex));
-        cudaMalloc(&new_idx_d[j], N_group * n * sizeof(int));
-        cudaMalloc(&old_idx_d[j], N_group * n * sizeof(int));
+        cudaMalloc(&new_idx_d[j], N_chunk * num_qubits_per_chunk * sizeof(int));
+        cudaMalloc(&old_idx_d[j], N_chunk * num_qubits_per_chunk * sizeof(int));
         cudaMalloc(&old_linear_idxs_d[j], 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
 
         for (int i = 0; i < num_qubits_per_chunk; ++i) {
@@ -159,6 +160,7 @@ int main(int argc, char* argv[]) {
 
     double time2 = omp_get_wtime();
     for (int i = 0; i < num_groups/2; ++i) {
+        #pragma omp parallel for num_threads(2)
         for (int h = 0; h < num_devices; ++h) {
             // reset the state vector for the next group
             int index = i*num_devices + h;
@@ -205,6 +207,7 @@ int main(int argc, char* argv[]) {
             }
 
         }
+        #pragma omp parallel for num_threads(2)
         for (int i = 0; i < num_devices; ++i) {
             cudaSetDevice(i);
             cudaStreamSynchronize(streams[i]);

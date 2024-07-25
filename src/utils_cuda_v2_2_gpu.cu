@@ -171,7 +171,7 @@ __global__ void contract_tensor(
 
     if (idx < N) {
 
-        int offset = idx * n;
+        int offset = (idx % chunk_size) * n;
 
         // Compute the two values for j = 0 and j = 1 and store in shared memory
         for (int j = 0; j < 2; ++j) {
@@ -180,10 +180,7 @@ __global__ void contract_tensor(
             // needed to translate back to the full state array!!!
             // printf("chunk_size: %d\n", chunk_size);;
             int old_linear_idx = old_linear_idxs[2*(idx % chunk_size) + j + qubit*2*chunk_size];
-            // int old_linear_idx = old_lin_idx_start;
-            // if (idx >= chunk_size) {
-            //     old_linear_idx += (idx / chunk_size) * chunk_size;
-            // }
+            old_linear_idx += (idx / chunk_size) * chunk_size;
 
             // Store the result in shared memory
             if (j == 0) {
