@@ -107,6 +107,7 @@ int main(int argc, char* argv[]) {
     Complex *state_h;
     Complex *state_d;
     int *new_idx_d;
+    // int *new_idx_h;
     int *old_idx_d;
     int *old_linear_idxs_d;
     // int *old_linear_idxs_h;
@@ -129,8 +130,9 @@ int main(int argc, char* argv[]) {
     // }
 
     cudaMalloc((void **)&state_d, N_group * sizeof(Complex));
-    cudaMalloc(&new_idx_d, N_group * n * sizeof(int));
-    cudaMalloc(&old_idx_d, N_group * n * sizeof(int));
+    cudaMalloc(&new_idx_d, N_chunk * num_qubits_per_chunk * sizeof(int));
+    // cudaMallocHost(&new_idx_h, N_chunk * num_qubits_per_chunk * sizeof(int));
+    cudaMalloc(&old_idx_d, N_chunk * num_qubits_per_chunk * sizeof(int));
     // cudaMemcpy(state_d, state_h, N_group * sizeof(Complex), cudaMemcpyHostToDevice);
 
 
@@ -138,11 +140,7 @@ int main(int argc, char* argv[]) {
     //     compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
     // }
 
-    // cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2*N_chunk* num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // for (int i = 0; i < (2*N_chunk*num_qubits_per_chunk); ++i) {
-    //     printf("%d ", old_linear_idxs_h[i]);
-    // }
 
     // initStateParallel<<<dimGrid, dimBlock>>>(state_d, N_group, N_chunk);
     // contract_tensor<<<dimGrid, dimBlock, sharedMemSize>>>(state_d, H_d[0], 0, new_idx_d, n, N, old_linear_idxs_d);
@@ -169,6 +167,19 @@ double time2 = omp_get_wtime();
 for (int i = 0; i < num_qubits_per_chunk; ++i) {
         compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d, old_idx_d, num_qubits_per_chunk, N_chunk, old_linear_idxs_d);
     }
+
+// cudaMemcpy(old_linear_idxs_h, old_linear_idxs_d, 2 * N_chunk * num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
+// cudaMemcpy(new_idx_h, new_idx_d, N_chunk * num_qubits_per_chunk * sizeof(int), cudaMemcpyDeviceToHost);
+
+// for (int i = 0; i < (N_chunk * num_qubits_per_chunk); ++i) {
+//     printf("%d ", new_idx_h[i]);
+// }
+// printf("\n");
+
+// for (int i = 0; i < (2 * N_chunk * num_qubits_per_chunk); ++i) {
+//     printf("%d ", old_linear_idxs_h[i]);
+// }
+// printf("\n");
 
 
 for (int i = 0; i < num_groups; ++i) {
