@@ -54,53 +54,6 @@ void allocateGatesDevice(const int num_devices, Complex **H_d, Complex **I_d, Co
 }
 
 
-__global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_maxValue, int size, int chunk_id, int* chunk_ids) {
-    __shared__ Complex sharedArray[1024];
-    __shared__ int sharedIndex[1024];
-
-    int tid = threadIdx.x;
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index < size) {
-        sharedArray[tid] = d_array[index];
-        sharedIndex[tid] = index;
-    } else {
-        sharedArray[tid] = make_cuDoubleComplex(-99.0, 0.00);  // Set to minimum value if out of bounds
-        sharedIndex[tid] = -1;        // Invalid index
-    }
-
-    __syncthreads();
-
-    // Perform reduction to find the max value and its index
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride && index + stride < size) {
-            if (cuCreal(sharedArray[tid]) < cuCreal(sharedArray[tid + stride])) {
-                sharedArray[tid] = sharedArray[tid + stride];
-                sharedIndex[tid] = sharedIndex[tid + stride];
-            }
-        }
-        __syncthreads();
-    }
-
-    // Write the result for this block to global memory
-    if (tid == 0) {
-
-
-        // printf("Val: %f, Index: %d, chunk_id: %d\n", cuCreal(sharedArray[0]), sharedIndex[0], chunk_id);
-        // printf("Index: %d\n", sharedIndex[0]);
-        // printf("chunk_id: %d\n", chunk_id);
-        d_maxIndex[chunk_id] = sharedIndex[0];
-        d_maxValue[chunk_id] = cuCreal(sharedArray[0]);
-        chunk_ids[chunk_id] = chunk_id;
-        // printf("Val: %f, Index: %d, chunk_id: %d\n", cuCreal(sharedArray[0]), sharedIndex[0], chunk_id);
-
-        // for (int i = 0; i < 2; ++i){
-        //     printf("d_maxIndex: %d\n", d_maxIndex[i]);
-        // }
-
-    }
-}
-
 __global__ void contract_tensor(
         Complex* state,
         const Complex* gate,
@@ -123,9 +76,6 @@ __global__ void contract_tensor(
 
         int offset = idx * n;
         int temp = idx % chunk_size;
-        // int temp = idx;
-
-        // printf("idx: %d, temp: %d, offset: %d, lower %lld, upper %lld\n", idx, temp, offset, lower, upper);
 
         // Compute the multi-dimensional index
         for (int i = n - 1; i >= 0; --i) {
@@ -156,21 +106,11 @@ __global__ void contract_tensor(
             }
 
             // Store the result in shared memory
-            if (j == 0) {
-                Complex val = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
-                shared_mem[idx % chunk_size] = val;
-                // printf("idx: %d, j: %d, old_lin_idx %d, val: %f\n", idx, j, old_linear_idx, cuCreal(val));
-
-            } else {
-                Complex val = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
-                shared_mem[idx % chunk_size] = cuCadd(shared_mem[idx % chunk_size], val);
-                // printf("idx: %d, j: %d, old_lin_idx %d, val: %f\n", idx, j, old_linear_idx, cuCreal(val));
-            }
-            // printf("idx: %d, temp: %d, offset: %d, old_lin_idx %d, upper %lld\n", idx, temp, offset, old_linear_idx, upper);
-
+            shared_mem[2*(idx % chunk_size) + j] = cuCmul(gate[new_idx[offset + qubit] * 2 + j], state[old_linear_idx]);
         }
         __syncthreads();
-        state[idx] = shared_mem[idx % chunk_size];
+        state[idx] = cuCadd(shared_mem[2*(idx % chunk_size) + 1], shared_mem[2*(idx % chunk_size)]);
+
     }
 }
 

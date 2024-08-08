@@ -15,20 +15,11 @@ typedef cuDoubleComplex Complex;
 
 int main(int argc, char* argv[]) {
 
-    // collect input args
-    // if (argc < 6) {
-    //     fprintf(stderr, "Usage: %s n qubits<int>; marked state<int>; number of samples<int>; fileName<string>; verbose 0 or 1<int>\n", argv[0]);
-    //     return 1;
-    // }
-
     int n = atoi(argv[1]);
     long long int N = (long long int)pow(2, n);
     long long int markedState = atoi(argv[2]);
     const int num_chunks_per_group = atoi(argv[3]);
     const int num_qubits_per_group = atoi(argv[4]);
-    // const int block_size = atoi(argv[4]);
-    // const char* fileName = argv[4];
-    // int verbose = atoi(argv[5]);
 
     if (markedState > (N-1)) {
         fprintf(stderr, "You chose a markedState %d but the largest state possible is state %d", markedState, (N-1));
@@ -71,7 +62,7 @@ int main(int argc, char* argv[]) {
     dim3 dimGrid(1);
     // dim3 dimGrid(num_chunks_per_group);
 
-    int print_val = 0;
+    int print_val = 1;
     if (print_val == 1) {
         printf("N: %lld\n", N);
         printf("n: %d\n", n);
@@ -85,6 +76,14 @@ int main(int argc, char* argv[]) {
     }
 
 
+    long long int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
+    printf("running %lld rounds\n", k);
+
+
+
+    double time = omp_get_wtime();
+    double time2 = omp_get_wtime();
+
     // Set the gates:
     int num_devices = 1;
     Complex *H_d[num_devices];
@@ -94,16 +93,6 @@ int main(int argc, char* argv[]) {
     Complex *X_H_d[num_devices];
     allocateGatesDevice(num_devices, H_d, I_d, Z_d, X_d, X_H_d);
 
-
-
-    // // Assuming we have t = 1 solution in grover's algorithm
-    // // we have k = floor(pi/4 * sqrt(N/num_chunks))
-    long long int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
-    // printf("running %lld rounds\n", k);
-
-
-
-    double time = omp_get_wtime();
 
     cudaStream_t streams[num_chunks_per_group];
 
@@ -149,6 +138,9 @@ int main(int argc, char* argv[]) {
 
     // allocate the solution state:
     cudaMallocHost((void **)&solution_state_h, N_chunk * sizeof(Complex));
+
+    double elapsed2 = omp_get_wtime() - time2;
+    time2 = omp_get_wtime();
 
     int marked_chunk = -99;
     int marked_max_val = -99;
@@ -197,10 +189,11 @@ int main(int argc, char* argv[]) {
 
         for (int i = 0; i < num_chunks_per_group; ++i){
             findMaxIndexKernel<<<1, N_chunk, 0, streams[i]>>>(state_d[i], d_maxIndex, d_maxValue, N_chunk, i, d_chunk_ids);
+            double time4 = omp_get_wtime();
             cudaMemcpyAsync(h_maxIndex, d_maxIndex, num_chunks_per_group*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
             cudaMemcpyAsync(h_chunk_ids, d_chunk_ids, num_chunks_per_group*sizeof(int), cudaMemcpyDeviceToHost, streams[i]);
             cudaMemcpyAsync(h_maxValue, d_maxValue, num_chunks_per_group*sizeof(double), cudaMemcpyDeviceToHost, streams[i]);
-
+            elapsed2 += omp_get_wtime() - time4;
         }
 
         for (int i = 0; i < num_chunks_per_group; ++i) {
@@ -237,10 +230,11 @@ int main(int argc, char* argv[]) {
     }
 
     double elapsed = omp_get_wtime() - time;
+    double elapsed3 = omp_get_wtime() - time2;
     // printf("Time: %f \n", elapsed);
     // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time
-    printf("%d,%lld,%lld,%lld,%d,%d,%d,%d,%d,%d,%f,%f\n",
-        n, k, num_groups, num_chunks, num_qubits_per_group, num_chunks_per_group, dimBlock.x, marked_chunk, markedState, marked_max_idx, marked_max_val, elapsed);
+    printf("%d,%lld,%lld,%lld,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f\n",
+        n, k, num_groups, num_chunks, num_qubits_per_group, num_chunks_per_group, dimBlock.x, marked_chunk, markedState, marked_max_idx, marked_max_val, elapsed, elapsed2, elapsed3);
 
     // printState(solution_state_h, N_chunk, "Initial state");
 

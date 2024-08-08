@@ -11,8 +11,6 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx);
 
 void allocateGatesDevice(const int num_devices, Complex **H_d, Complex **I_d, Complex **Z_d, Complex **X_d, Complex **X_H_d);
 
-__global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_maxValue, int size, int chunk_id, int* chunk_ids);
-
 void applyGateAllQubits(
     Complex* state,
     const Complex* gate,
@@ -52,7 +50,7 @@ void applyDiffusionOperator(
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize,
-    const int num_chunks_per_group,
+    const long long int num_chunks_per_group,
     const long long int N_chunk,
     const long long int lower,
     const long long int upper

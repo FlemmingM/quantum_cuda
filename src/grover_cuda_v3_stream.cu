@@ -25,11 +25,21 @@ int main(int argc, char* argv[]) {
 
     printf("Number of visible CUDA devices: %d\n", num_vis_devices);
 
+    // collect input args
+    // if (argc < 6) {
+    //     fprintf(stderr, "Usage: %s n qubits<int>; marked state<int>; number of samples<int>; fileName<string>; verbose 0 or 1<int>\n", argv[0]);
+    //     return 1;
+    // }
+
     int n = atoi(argv[1]);
     long long int N = pow(2, n);
     long long int markedState = atoi(argv[2]);
     const long long int num_chunks_per_group = atoi(argv[3]);
     const int num_qubits_per_group = atoi(argv[4]);
+
+
+    int num_streams = 2;
+    // const long long int num_chunks_per_group = num_chunks_per_group_ / num_streams;
 
     if (markedState > (N-1)) {
         fprintf(stderr, "You chose a markedState %d but the largest state possible is state %d", markedState, (N-1));
@@ -48,7 +58,7 @@ int main(int argc, char* argv[]) {
 
     int num_qubits_per_chunk = num_qubits_per_group - (int)log2(num_chunks_per_group);
     int N_chunk = pow(2, num_qubits_per_chunk);
-    long long int N_group = num_chunks_per_group * N_chunk;
+    long long int N_group = num_chunks_per_group * N_chunk / num_streams;
     long long int num_chunks = num_groups * num_chunks_per_group;
 
     if (N_chunk > pow(2, 10)) {
@@ -93,6 +103,9 @@ int main(int argc, char* argv[]) {
     }
 
 
+
+
+
     // // Assuming we have t = 1 solution in grover's algorithm
     // // we have k = floor(pi/4 * sqrt(N/num_chunks))
     long long int k = (int)floor(M_PI / 4 * sqrt(N/num_chunks));
@@ -110,13 +123,14 @@ int main(int argc, char* argv[]) {
     Complex *X_H_d[num_devices];
     allocateGatesDevice(num_devices, H_d, I_d, Z_d, X_d, X_H_d);
 
-    cudaStream_t streams[num_devices];
+    cudaStream_t streams[num_devices*num_streams];
 
-    Complex *state_h[num_devices];
-    Complex *state_d[num_devices];
+    Complex *state_h[num_devices*num_streams];
+    Complex *state_d[num_devices*num_streams];
     int *new_idx_d[num_devices];
     int *old_idx_d[num_devices];
     int *old_linear_idxs_d[num_devices];
+    // int *old_linear_idxs_h;
 
     // for indices
     int sharedMemSize2 = 2*N_chunk * sizeof(int);
@@ -124,14 +138,19 @@ int main(int argc, char* argv[]) {
 
     // int chunk_id = -1;
     // init the arrays:
-    #pragma omp parallel for num_threads(2)
-    for (int j = 0; j < num_devices; ++j) {
-        // int device_id = i % num_devices;
-        cudaSetDevice(j);
+    // #pragma omp parallel for num_threads(2)
+    for (int j = 0; j < (num_streams*num_devices); ++j) {
+        int device_id = j % num_devices;
+        cudaSetDevice(device_id);
 
         cudaStreamCreate(&streams[j]);
         cudaMallocHost((void **)&state_h[j], N_group * sizeof(Complex));
         cudaMalloc((void **)&state_d[j], N_group * sizeof(Complex));
+    }
+
+
+    for (int j=0; j<num_devices; ++j){
+        cudaSetDevice(j);
         cudaMalloc(&new_idx_d[j], N_chunk * num_qubits_per_chunk * sizeof(int));
         cudaMalloc(&old_idx_d[j], N_chunk * num_qubits_per_chunk * sizeof(int));
         cudaMalloc(&old_linear_idxs_d[j], 2 * N_chunk * num_qubits_per_chunk * sizeof(int));
@@ -139,26 +158,28 @@ int main(int argc, char* argv[]) {
 
     double elapsed2 = omp_get_wtime() - time2;
     time2 = omp_get_wtime();
+    int chunk_id = -1;
 
-    #pragma omp parallel for num_threads(2)
+    // #pragma omp parallel for num_threads(2)
     for (int j = 0; j < num_devices; ++j) {
+        cudaSetDevice(j);
         for (int i = 0; i < num_qubits_per_chunk; ++i) {
             compute_idx<<<1, dimBlock, sharedMemSize2>>>(i, new_idx_d[j], old_idx_d[j], num_qubits_per_chunk, N_chunk, old_linear_idxs_d[j]);
         }
     }
 
     for (int i = 0; i < num_groups/2; ++i) {
-        #pragma omp parallel for num_threads(2)
+        // #pragma omp parallel for num_threads(2)
         for (int h = 0; h < num_devices; ++h) {
             // reset the state vector for the next group
             int index = i*num_devices + h;
-            int device_id = h;
+            int device_id = h % 2;
             cudaSetDevice(device_id);
 
-            initStateParallel<<<dimGrid, dimBlock, 0, streams[device_id]>>>(state_d[device_id], N_group, N_chunk);
+            initStateParallel<<<dimGrid, dimBlock, 0, streams[h]>>>(state_d[h], N_group, N_chunk);
 
             applyGateAllQubits(
-                state_d[device_id],
+                state_d[h],
                 H_d[device_id],
                 new_idx_d[device_id],
                 num_qubits_per_chunk,
@@ -168,36 +189,39 @@ int main(int argc, char* argv[]) {
                 N_group,
                 old_linear_idxs_d[device_id],
                 N_chunk,
-                streams[device_id]
+                streams[h]
             );
 
             for (int l = 0; l < k; ++l) {
                 if (index == oracle_group) {
-                    applyPhaseFlip<<<1, 1, 0, streams[device_id]>>>(state_d[device_id], markedState);
+                    // printf("oracle chunk_id: %lld, i: %d\n", oracle_group, i);
+                    applyPhaseFlip<<<1, 1, 0, streams[h]>>>(state_d[h], markedState);
                 }
 
                 applyDiffusionOperator(
-                    state_d[device_id],
+                    state_d[h],
                     X_H_d[device_id], H_d[device_id], X_d[device_id], Z_d[device_id], new_idx_d[device_id],
                     num_qubits_per_chunk, dimBlock, dimGrid, 2*sharedMemSize,
                     N_chunk,
                     N_group,
                     old_linear_idxs_d[device_id],
-                    streams[device_id]
+                    streams[h]
                 );
             }
 
             if (index == oracle_group) {
+                // printf("oracle: %d\n", device_id);
                 double time4 = omp_get_wtime();
-                // chunk_id = device_id;
-                cudaMemcpyAsync(state_h[device_id], state_d[device_id], N_group * sizeof(Complex), cudaMemcpyDeviceToHost, streams[device_id]);
+                chunk_id = device_id;
+                cudaMemcpyAsync(state_h[h], state_d[h], N_group * sizeof(Complex), cudaMemcpyDeviceToHost, streams[h]);
                 elapsed2 += omp_get_wtime() - time4;
             }
 
         }
-        #pragma omp parallel for num_threads(2)
-        for (int j = 0; j < num_devices; ++j) {
-            cudaSetDevice(j);
+        // #pragma omp parallel for num_threads(2)
+        for (int j = 0; j < (num_devices*num_streams); ++j) {
+            int device_id = j % 2;
+            cudaSetDevice(device_id);
             cudaStreamSynchronize(streams[j]);
             cudaDeviceSynchronize();
         }
@@ -205,10 +229,13 @@ int main(int argc, char* argv[]) {
 
     // printState(state_h[chunk_id], N_group, "state end");
 
-
+    // double elapsed2 = omp_get_wtime() - time2;
+    // printf("Time compute: %f \n", elapsed2);
+    // double elapsed = omp_get_wtime() - time;
+    // printf("Time: %f \n", elapsed);
     double elapsed = omp_get_wtime() - time;
     double elapsed3 = omp_get_wtime() - time2;
-    // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time
+    // // n, k, num_groups, num_chunks, n_per_group, chunks_per_group, num_threads, marked_chunk, markedState, marked_max_idx, marked_max_val, time
     printf("%d,%lld,%lld,%lld,%d,%d,%d,%d,%f,%f,%f\n",
         n, k, num_groups, num_chunks, num_qubits_per_group, num_chunks_per_group, dimBlock.x, markedState, elapsed, elapsed2, elapsed3);
 
@@ -222,9 +249,13 @@ int main(int argc, char* argv[]) {
         cudaFree(new_idx_d[i]);
         cudaFree(old_idx_d[i]);
         cudaFree(old_linear_idxs_d[i]);
+    }
+
+    for (int i = 0; i < (num_devices*num_streams); ++i) {
         cudaFree(state_d[i]);
         cudaFreeHost(state_h[i]);
     }
+
 
 
 

@@ -11,7 +11,8 @@ __global__ void applyPhaseFlip(Complex* state, long long int idx);
 
 void allocateGatesDevice(const int num_devices, Complex **H_d, Complex **I_d, Complex **Z_d, Complex **X_d, Complex **X_H_d);
 
-__global__ void findMaxIndexKernel(Complex* d_array, int* d_maxIndex, double* d_maxValue, int size, int chunk_id, int* chunk_ids);
+__global__ void applyPhaseFlipParallel(Complex* state, const long long int N, const int N_chunk);
+
 
 __global__ void compute_idx(
         int qubit,
@@ -20,7 +21,7 @@ __global__ void compute_idx(
         const int n,
         const long long int N,
         int* old_linear_idxs
-    );
+);
 
 void applyGateAllQubits(
     Complex* state,
@@ -31,7 +32,8 @@ void applyGateAllQubits(
     dim3 dimGrid,
     int sharedMemSize,
     const long long int N,
-    int* old_linear_idxs
+    int* old_linear_idxs,
+    const int N_chunk
     );
 
 void applyGateSingleQubit(
@@ -44,7 +46,8 @@ void applyGateSingleQubit(
     dim3 dimGrid,
     int sharedMemSize,
     const long long int N,
-    int* old_linear_idxs
+    int* old_linear_idxs,
+    const int N_chunk
     );
 
 void applyDiffusionOperator(
@@ -58,8 +61,7 @@ void applyDiffusionOperator(
     dim3 dimBlock,
     dim3 dimGrid,
     int sharedMemSize,
-    const int num_chunks_per_group,
-    const long long int N_chunk,
+    const int N_chunk,
     const long long int N,
     int* old_linear_idxs
     );
@@ -71,7 +73,8 @@ __global__ void contract_tensor(
     int* new_idx,
     const int n,
     const long long int N,
-    int* old_linear_idxs
+    int* old_linear_idxs,
+    const int chunk_size
 );
 
 #endif // UTILS_CUDA_STREAM_H

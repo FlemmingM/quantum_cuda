@@ -31,7 +31,6 @@ void zeroOutArray(Complex* array, int length){
 }
 
 
-// __host__ __device__
 void contract_tensor(const Complex* state,
                      const Complex gate[2][2],
                      int qubit,
@@ -56,7 +55,6 @@ void contract_tensor(const Complex* state,
         }
 
         // Perform the tensor contraction for the specified qubit
-        // TODO: make the algorithm more generic to work with all dimensions (currently it is 2)
         for (int j = 0; j < 2; ++j) {
             // Copy new_idx to old_idx
             for (int i = 0; i < n; ++i) {
@@ -193,38 +191,6 @@ double* simulate(const Complex* weights, int numElements, int numSamples) {
     return averages;
 }
 
-// Complex** createMatrix(int numRows, int numCols, const Complex* initialValues) {
-//     if (numRows <= 0 || numCols <= 0) {
-//         fprintf(stderr, "Invalid matrix dimensions.\n");
-//         return NULL;
-//     }
-
-//     // Allocate memory for row pointers
-//     Complex** matrix = (Complex**)malloc(numRows * sizeof(Complex*));
-//     if (matrix == NULL) {
-//         fprintf(stderr, "Memory allocation failed.\n");
-//         return NULL;
-//     }
-
-//     // Allocate memory for each row and initialize with provided values
-//     for (int i = 0; i < numRows; ++i) {
-//         matrix[i] = (Complex*)malloc(numCols * sizeof(Complex));
-//         if (matrix[i] == NULL) {
-//             for (int j = 0; j < i; ++j) {
-//                 free(matrix[j]);
-//             }
-//             free(matrix);
-//             fprintf(stderr, "Memory allocation failed.\n");
-//             return NULL;
-//         }
-//         for (int j = 0; j < numCols; ++j) {
-//             int index = i * numCols + j;
-//             matrix[i][j] = initialValues[index];
-//         }
-//     }
-
-//     return matrix;
-// }
 
 void deleteMatrix(Complex** matrix, int rows) {
     for (int i = 0; i < rows; ++i) {
@@ -232,33 +198,3 @@ void deleteMatrix(Complex** matrix, int rows) {
     }
     free(matrix);
 }
-
-// Complex** kroneckerProduct(Complex** A, int aRows, int aCols, Complex** B, int bRows, int bCols) {
-//     int resultRows = aRows * bRows;
-//     int resultCols = aCols * bCols;
-//     Complex** result = (Complex**)malloc(resultRows * sizeof(Complex*));
-//     for (int i = 0; i < resultRows; ++i) {
-//         result[i] = (Complex*)malloc(resultCols * sizeof(Complex));
-//     }
-
-//     for (int i = 0; i < aRows; ++i) {
-//         for (int j = 0; j < aCols; ++j) {
-//             for (int k = 0; k < bRows; ++k) {
-//                 for (int l = 0; l < bCols;) {
-//                     result[i * bRows + k][j * bCols + l] = A[i][j] * B[k][l];
-//                 }
-//             }
-//         }
-//     }
-
-//     return result;
-// }
-
-// void printMatrix(Complex** matrix, int rows, int cols) {
-//     for (int i = 0; i < rows; ++i) {
-//         for (int j = 0; j < cols; ++j) {
-//             printf("(%f + %fi) ", creal(matrix[i][j]), cimag(matrix[i][j]));
-//         }
-//         printf("\n");
-//     }
-// }

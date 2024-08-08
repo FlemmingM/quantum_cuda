@@ -6,12 +6,6 @@
 // Define a complex number type for simplicity
 typedef double complex Complex;
 
-// Declare any functions from utils.c that you want to use in other files
-// Complex** createMatrix(int rows, int cols, const Complex* initialValues);
-// void deleteMatrix(Complex** matrix, int rows);
-// Complex** kroneckerProduct(Complex** A, int aRows, int aCols, Complex** B, int bRows, int bCols);
-// void printMatrix(Complex** matrix, int rows, int cols);
-double* simulate(const Complex* weights, int numElements, int numSamples);
 void applyPhaseFlip(Complex* state, int idx);
 void applyGateAllQubits(
     Complex* state,
