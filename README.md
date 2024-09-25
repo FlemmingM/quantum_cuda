@@ -2,15 +2,13 @@
 
 Grover's algorihm which finds a solution for arbitrary N = 2^n
 
+For more information about the project, how this quantum algorithm works, and how it can be simulated on CPUs and GPUs, please have a look at the paper `quantum_cuda_paper.pdf`
+
 
 
 # Commands
 ```
-h100sh
-
-ssh gracy
-
-#module load /appl9/nvhpc/2023_2311/modulefiles/nvhpc-nompi/23.11
+# Modules needed
 module load cuda/12.2.2
 module load gcc/13.1.0-binutils-2.40
 ```
@@ -21,10 +19,10 @@ module load gcc/13.1.0-binutils-2.40
 - cuda baseline
 - cuda v1
 - cuda v2
-- cuda v3
+- cuda v3 (fastest)
 - cuda v1 2 GPU
 - cuda v2 2 GPU
-- cuda v3 2 GPU
+- cuda v3 2 GPU (fastest)
 - cuda stream (only to show how to test for correct solution)
 
 
@@ -34,6 +32,13 @@ module load gcc/13.1.0-binutils-2.40
 - profiling: Nsight Systems and Compute
 - Multi GPU speedup
 - Gracy performance (profiling not available)
+
+# Compile
+```
+cd src
+make clean && make
+```
+Then you can run the different programs. Currently 2 GPUs are supported but with small modifications it can scale to more GPUs.
 
 # Examples
 
